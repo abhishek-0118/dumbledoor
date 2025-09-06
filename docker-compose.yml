@@ -1,0 +1,36 @@
+services:
+  app-local:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: stark-app-local
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=local
+      - VECTOR_BACKEND=chroma
+    volumes:
+      - ./config:/app/config:ro
+      - ./.chroma:/app/.chroma
+    ports:
+      - "8000:8000"
+    command: /bin/sh -c "python -m app.cli --index --env local && python -m app.cli --serve --env local"
+
+  app-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: stark-app-prod
+    profiles: ["prod"]
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=prod
+      - VECTOR_BACKEND=chroma
+    volumes:
+      - ./config:/app/config:ro
+      - ./repos:/app/repos
+      - ./.chroma:/app/.chroma
+    ports:
+      - "8001:8000"
+    command: /bin/sh -c "./scripts/prod_clone.sh && python -m app.cli --index --env prod && python -m app.cli --serve --env prod"

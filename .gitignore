@@ -1,0 +1,5 @@
+.env
+./.env
+.env.local
+lc_starter_lit.py
+lc_starter_lit_2.py

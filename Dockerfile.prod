@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends git ca-certificates curl \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+COPY . /app
+
+COPY config /app/config
+COPY .env /app/.env
+
+COPY scripts /app/scripts
+
+ENV APP_ENV=prod
+
+RUN chmod +x scripts/prod_clone.sh
+
+EXPOSE 8000
+
+CMD ["sh", "-c", "./scripts/prod_clone.sh && python -m app.cli --index && python -m app.cli --serve"]

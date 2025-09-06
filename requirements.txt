@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydantic
+PyYAML
+python-dotenv
+langchain
+langchain-community
+langchain-google-genai
+langchain-huggingface
+langchain-chroma
+chromadb
+tiktoken
+sentence-transformers
+torch
+google-auth
+google-ai-generativelanguage
+requests
