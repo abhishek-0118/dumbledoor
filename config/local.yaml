@@ -1,5 +1,5 @@
 embedding:
-  model_name: sentence-transformers/all-roberta-large-v1
+  model_name: sentence-transformers/all-roberta-large-v1 
   normalize: true
   min_dimension: 1024
   api_provider: huggingface
@@ -10,24 +10,29 @@ embedding:
 backend:
   chroma_dir: ./.chroma
   collection_name: code_index
+  persist_directory: ./.chroma
 
 indexing:
   local_repo_root: ./repos
-  local_paths: ["./repos/dokumentor"]
+  local_paths: ["./repos/cds-web"]
   include_globs: ["**/*"]
   exclude_globs: ["**/.git/**","**/.github/**","**/node_modules/**","**/dist/**","**/build/**","**/*.min.js","**/*.png","**/*.jpg","**/*.jpeg","**/*.pdf"]
   max_file_mb: 1.5
   chunk_size: 1200
   chunk_overlap: 150
-  batch_size: 5000
+  batch_size: 2000
   github_token_env: GITHUB_TOKEN
   github_auth_required: false
+  max_retries: 3
+  timeout: 30
+  force_reindex: true
 
 retrieval:
   top_k: 12
   alpha_hybrid: 0.3
   use_reranker: true
   cross_encoder_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  similarity_threshold: 0.5
 
 server:
   host: 0.0.0.0
@@ -35,3 +40,6 @@ server:
 
 gemini_chat_model: gemini-1.5-flash
 app_env: local
+logging:
+  level: INFO
+  file: ./logs/app.log
