@@ -1,28 +1,3 @@
-# Enhanced Repository Indexing and Search Service
-
-A powerful code search and analysis tool that provides comprehensive, context-aware answers about your codebase using advanced AI and vector embeddings.
-
-## Features
-
-### Enhanced Search Capabilities
-- **Context-Aware Search**: Finds relevant code with rich context and relationships
-- **Code Structure Understanding**: Analyzes classes, functions, imports, and module relationships
-- **Multi-Language Support**: Python, JavaScript, TypeScript, Go, Java, and more
-- **Intelligent Reranking**: Cross-encoder models for better result relevance
-- **Related Context Discovery**: Automatically finds related code from same files/modules
-
-### 🧠 Smart Code Analysis
-- **Query Understanding**: Analyzes intent (how-to, debugging, implementation, architecture)
-- **Code-Aware Chunking**: Preserves function/class boundaries for better context
-- **Metadata Enrichment**: File types, languages, test detection, configuration files
-- **Architectural Insights**: Understands project structure and component relationships
-
-### ⚡ Advanced Operations
-- **Force Cleanup**: `--force-cleanup` - Remove all embeddings and indexes
-- **Force Re-indexing**: `--force-index` - Clean up and re-index all repositories
-- **Test Search**: `--test-search "query"` - Test search functionality
-- **Enhanced API**: More comprehensive responses with context summaries
-
 ## Configuration
 
 ### Basic Setup
@@ -64,9 +39,6 @@ python -m app.cli --index --env local
 
 ### Step 3: Test Search
 ```bash
-# Test the enhanced search functionality
-python -m app.cli --test-search "How to implement authentication?" --env local
-
 # Start the API server
 python -m app.cli --serve --env local
 ```
