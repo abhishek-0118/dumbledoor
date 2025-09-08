@@ -17,9 +17,9 @@ indexing:
   local_paths: ["./repos/cds-web"]
   include_globs: ["**/*"]
   exclude_globs: ["**/.git/**","**/.github/**","**/node_modules/**","**/dist/**","**/build/**","**/*.min.js","**/*.png","**/*.jpg","**/*.jpeg","**/*.pdf"]
-  max_file_mb: 1.5
-  chunk_size: 1200
-  chunk_overlap: 150
+  max_file_mb: 2.0  # Increased for better context
+  chunk_size: 1500  # Increased chunk size for more context
+  chunk_overlap: 200  # Increased overlap for better continuity
   batch_size: 2000
   github_token_env: GITHUB_TOKEN
   github_auth_required: false
@@ -28,11 +28,14 @@ indexing:
   force_reindex: true
 
 retrieval:
-  top_k: 12
+  top_k: 20  # Increased for more comprehensive results
   alpha_hybrid: 0.3
   use_reranker: true
   cross_encoder_model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  similarity_threshold: 0.5
+  similarity_threshold: 0.4  # Lowered for more inclusive results
+  max_context_docs: 30  # Maximum documents to consider for context
+  include_file_context: true  # Include related files in context
+  boost_same_language: true  # Boost results from same programming language
 
 server:
   host: 0.0.0.0

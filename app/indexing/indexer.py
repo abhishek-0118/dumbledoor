@@ -2,6 +2,7 @@ import logging
 import json
 import subprocess
 import re
+import shutil
 from pathlib import Path
 from typing import List, Optional
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -36,12 +37,65 @@ def _should_index(path: Path, includes: List[str], excludes: List[str], max_mb: 
 class RepoIndexer:
 	def __init__(self, cfg: AppConfig):
 		self.cfg = cfg
+		# Enhanced text splitter for better code understanding
 		self.splitter = RecursiveCharacterTextSplitter(
 			chunk_size=cfg.indexing.chunk_size,
 			chunk_overlap=cfg.indexing.chunk_overlap,
+			separators=[
+				"\n\n",  # Paragraph breaks
+				"\nclass ",  # Class definitions
+				"\ndef ",   # Function definitions
+				"\n@",      # Decorators
+				"\nif ",    # Control structures
+				"\nfor ",
+				"\nwhile ",
+				"\ntry:",
+				"\nwith ",
+				"\n",       # Line breaks
+				" ",        # Word breaks
+				""
+			],
+			keep_separator=True,
 		)
 		self.embeddings, self.dim = create_embedding_fn(cfg.embedding)
 		self.store = create_vectorstore(cfg.backend, self.embeddings, self.dim)
+
+	def cleanup_all(self):
+		"""Remove all embeddings and indexes"""
+		logger.info("Starting cleanup of all embeddings and indexes")
+		
+		# Clean up the Chroma directory
+		chroma_dir = Path(self.cfg.backend.chroma_dir)
+		if chroma_dir.exists():
+			logger.info(f"Removing Chroma directory: {chroma_dir}")
+			try:
+				shutil.rmtree(chroma_dir)
+				logger.info("Chroma directory removed successfully")
+			except Exception as e:
+				logger.error(f"Failed to remove Chroma directory: {e}")
+				raise
+		else:
+			logger.info(f"Chroma directory does not exist: {chroma_dir}")
+		
+		# Clean up index state files in repository directories
+		if self.cfg.app_env != "local":
+			repo_root = Path(self.cfg.indexing.local_repo_root).resolve()
+			if repo_root.exists():
+				logger.info(f"Cleaning up index state files in: {repo_root}")
+				state_files_removed = 0
+				for state_file in repo_root.rglob(".index_state.json"):
+					try:
+						state_file.unlink()
+						state_files_removed += 1
+						logger.debug(f"Removed state file: {state_file}")
+					except Exception as e:
+						logger.warning(f"Failed to remove state file {state_file}: {e}")
+				logger.info(f"Removed {state_files_removed} index state files")
+		
+		# Recreate the vectorstore for future operations
+		self.store = create_vectorstore(self.cfg.backend, self.embeddings, self.dim)
+		
+		logger.info("Cleanup completed")
 
 	def _docs_from_dir(self, repo_dir: Path, repo_name: str) -> List[Document]:
 		docs: List[Document] = []
@@ -52,16 +106,214 @@ class RepoIndexer:
 				text = p.read_text(errors="ignore")
 			except Exception:
 				continue
+			
+			# Enhanced metadata with code understanding
+			rel_path = p.relative_to(repo_dir).as_posix()
+			file_type = p.suffix.lower()
+			
+			# Extract additional context for code files
+			language = self._detect_language(file_type)
+			file_size = len(text)
+			line_count = text.count('\n') + 1
+			
+			# Add directory context
+			dir_parts = str(p.parent.relative_to(repo_dir)).split('/')
+			dir_context = ' / '.join(dir_parts) if dir_parts != ['.'] else 'root'
+			
 			md = {
 				"repo": repo_name,
 				"repo_name": repo_name,
-				"path": p.relative_to(repo_dir).as_posix(),
+				"path": rel_path,
 				"full_path": str(p),
-				"file_type": p.suffix.lower(),
+				"file_type": file_type,
+				"language": language,
 				"repo_folder": repo_name,
+				"directory": dir_context,
+				"file_size": file_size,
+				"line_count": line_count,
+				"is_test": self._is_test_file(rel_path),
+				"is_config": self._is_config_file(rel_path),
+				"module_name": self._extract_module_name(rel_path, file_type),
 			}
-			docs.append(Document(page_content=text, metadata=md))
+			
+			# Create enhanced content with file context
+			enhanced_content = self._create_enhanced_content(text, p, repo_name, rel_path)
+			docs.append(Document(page_content=enhanced_content, metadata=md))
+		
 		return self.splitter.split_documents(docs)
+
+	def _detect_language(self, file_type: str) -> str:
+		"""Detect programming language from file extension"""
+		language_map = {
+			'.py': 'python',
+			'.js': 'javascript', 
+			'.ts': 'typescript',
+			'.tsx': 'typescript',
+			'.jsx': 'javascript',
+			'.go': 'go',
+			'.java': 'java',
+			'.kt': 'kotlin',
+			'.rs': 'rust',
+			'.c': 'c',
+			'.cpp': 'cpp',
+			'.h': 'c',
+			'.hpp': 'cpp',
+			'.rb': 'ruby',
+			'.php': 'php',
+			'.scala': 'scala',
+			'.sql': 'sql',
+			'.sh': 'bash',
+			'.md': 'markdown',
+			'.yml': 'yaml',
+			'.yaml': 'yaml',
+			'.toml': 'toml',
+			'.ini': 'ini',
+			'.json': 'json',
+			'.xml': 'xml',
+			'.html': 'html',
+			'.css': 'css',
+		}
+		return language_map.get(file_type.lower(), 'text')
+
+	def _is_test_file(self, path: str) -> bool:
+		"""Check if file is a test file"""
+		path_lower = path.lower()
+		return any(indicator in path_lower for indicator in [
+			'test', 'spec', '__test__', '__spec__', 'tests/', 'spec/',
+			'.test.', '.spec.', '_test.', '_spec.'
+		])
+
+	def _is_config_file(self, path: str) -> bool:
+		"""Check if file is a configuration file"""
+		path_lower = path.lower()
+		config_indicators = [
+			'config', 'conf', 'settings', 'setup', 'makefile', 'dockerfile',
+			'.env', '.ini', '.toml', '.yaml', '.yml', '.json', 'package.json',
+			'requirements.txt', 'go.mod', 'cargo.toml'
+		]
+		return any(indicator in path_lower for indicator in config_indicators)
+
+	def _extract_module_name(self, path: str, file_type: str) -> str:
+		"""Extract module/class name from file path"""
+		if file_type == '.py':
+			# Convert path to Python module notation
+			module_path = path.replace('/', '.').replace('\\', '.')
+			if module_path.endswith('.py'):
+				module_path = module_path[:-3]
+			if module_path.startswith('.'):
+				module_path = module_path[1:]
+			return module_path
+		elif file_type in ['.js', '.ts', '.jsx', '.tsx']:
+			# Extract component/module name
+			parts = path.split('/')
+			filename = parts[-1]
+			if '.' in filename:
+				return filename.split('.')[0]
+			return filename
+		else:
+			# Generic file name without extension
+			parts = path.split('/')
+			filename = parts[-1]
+			if '.' in filename:
+				return filename.split('.')[0]
+			return filename
+
+	def _create_enhanced_content(self, text: str, file_path: Path, repo_name: str, rel_path: str) -> str:
+		"""Create enhanced content with additional context for better understanding"""
+		
+		# Add file header with context
+		header = f"""FILE: {rel_path}
+REPOSITORY: {repo_name}
+LANGUAGE: {self._detect_language(file_path.suffix)}
+PATH: {rel_path}
+
+"""
+		
+		# For code files, try to extract key structural information
+		file_type = file_path.suffix.lower()
+		if file_type == '.py':
+			structure_info = self._extract_python_structure(text)
+		elif file_type in ['.js', '.ts', '.jsx', '.tsx']:
+			structure_info = self._extract_js_structure(text)
+		else:
+			structure_info = ""
+		
+		if structure_info:
+			header += f"STRUCTURE:\n{structure_info}\n\n"
+		
+		return header + text
+
+	def _extract_python_structure(self, text: str) -> str:
+		"""Extract Python file structure (classes, functions, imports)"""
+		import ast
+		try:
+			tree = ast.parse(text)
+			structure = []
+			
+			# Extract imports
+			imports = []
+			for node in ast.walk(tree):
+				if isinstance(node, ast.Import):
+					for alias in node.names:
+						imports.append(f"import {alias.name}")
+				elif isinstance(node, ast.ImportFrom):
+					module = node.module or ""
+					for alias in node.names:
+						imports.append(f"from {module} import {alias.name}")
+			
+			if imports:
+				structure.append("IMPORTS: " + ", ".join(imports[:5]))  # Limit to first 5
+			
+			# Extract classes and functions
+			classes = []
+			functions = []
+			for node in ast.walk(tree):
+				if isinstance(node, ast.ClassDef):
+					classes.append(node.name)
+				elif isinstance(node, ast.FunctionDef):
+					functions.append(node.name)
+			
+			if classes:
+				structure.append("CLASSES: " + ", ".join(classes))
+			if functions:
+				structure.append("FUNCTIONS: " + ", ".join(functions[:10]))  # Limit to first 10
+			
+			return "\n".join(structure)
+		except:
+			return ""
+
+	def _extract_js_structure(self, text: str) -> str:
+		"""Extract JavaScript/TypeScript file structure"""
+		structure = []
+		
+		# Simple regex-based extraction for imports, exports, functions, classes
+		import re
+		
+		# Extract imports
+		import_pattern = r'import\s+.*?from\s+[\'"]([^\'"]+)[\'"]'
+		imports = re.findall(import_pattern, text)
+		if imports:
+			structure.append("IMPORTS: " + ", ".join(imports[:5]))
+		
+		# Extract exports
+		export_pattern = r'export\s+(?:default\s+)?(?:class|function|const|let|var)\s+(\w+)'
+		exports = re.findall(export_pattern, text)
+		if exports:
+			structure.append("EXPORTS: " + ", ".join(exports))
+		
+		# Extract function declarations
+		func_pattern = r'(?:function\s+(\w+)|const\s+(\w+)\s*=\s*(?:\([^)]*\)\s*=>|\([^)]*\)\s*:\s*[^=]*=>))'
+		functions = [match[0] or match[1] for match in re.findall(func_pattern, text)]
+		if functions:
+			structure.append("FUNCTIONS: " + ", ".join(functions[:10]))
+		
+		# Extract class declarations
+		class_pattern = r'class\s+(\w+)'
+		classes = re.findall(class_pattern, text)
+		if classes:
+			structure.append("CLASSES: " + ", ".join(classes))
+		
+		return "\n".join(structure)
 
 	def index_local_root(self, local_root: Path):
 		repo_dirs = [d for d in local_root.iterdir() if d.is_dir() and not d.name.startswith('.')]

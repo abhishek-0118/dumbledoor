@@ -1,101 +1,148 @@
-# Repository Indexing and Search Service
+# Enhanced Repository Indexing and Search Service
+
+A powerful code search and analysis tool that provides comprehensive, context-aware answers about your codebase using advanced AI and vector embeddings.
+
+## Features
+
+### Enhanced Search Capabilities
+- **Context-Aware Search**: Finds relevant code with rich context and relationships
+- **Code Structure Understanding**: Analyzes classes, functions, imports, and module relationships
+- **Multi-Language Support**: Python, JavaScript, TypeScript, Go, Java, and more
+- **Intelligent Reranking**: Cross-encoder models for better result relevance
+- **Related Context Discovery**: Automatically finds related code from same files/modules
+
+### 🧠 Smart Code Analysis
+- **Query Understanding**: Analyzes intent (how-to, debugging, implementation, architecture)
+- **Code-Aware Chunking**: Preserves function/class boundaries for better context
+- **Metadata Enrichment**: File types, languages, test detection, configuration files
+- **Architectural Insights**: Understands project structure and component relationships
+
+### ⚡ Advanced Operations
+- **Force Cleanup**: `--force-cleanup` - Remove all embeddings and indexes
+- **Force Re-indexing**: `--force-index` - Clean up and re-index all repositories
+- **Test Search**: `--test-search "query"` - Test search functionality
+- **Enhanced API**: More comprehensive responses with context summaries
 
 ## Configuration
-This service uses YAML configuration files:
-- `config/local.yaml` - Local development environment
-- `config/prod.yaml` - Production environment
 
-## Setup Instructions
+### Basic Setup
+```yaml
+# config/local.yaml or config/prod.yaml
+indexing:
+    local_paths: ["./repos/your-repo"]  # Path to your repositories
+    chunk_size: 1500                   # Increased for better context
+    chunk_overlap: 200                 # Better continuity between chunks
+    max_file_mb: 2.0                   # Support larger files
 
-### Local Development Setup
-1. **Copy Repository**: Copy the target repository folder into `repos/` directory
-   ```bash
-   cp -r /path/to/your/repo ./repos/
-   ```
+retrieval:
+    top_k: 20                          # More comprehensive results
+    use_reranker: true                 # Enable cross-encoder reranking
+    include_file_context: true         # Include related file context
+    boost_same_language: true          # Prioritize same programming language
+```
 
-2. **Update Configuration**: Edit `config/local.yaml` and update the `indexing.local_paths` to point to your repository:
-   ```yaml
-   indexing:
-     local_paths: ["./repos/your-repo-name"]
-   ```
+## Quick Start
 
-3. **Environment Variables**: Ensure your `.env` file contains required keys:
-   ```bash
-   GITHUB_TOKEN=your_github_token_here
-   GEMINI_API_KEY=your_gemini_api_key_here
-   ```
-
-### Production Setup
-1. **Update Configuration**: Edit `config/prod.yaml` and configure `indexing.repo_urls`:
-   ```yaml
-   indexing:
-     repo_urls:
-       - 'https://github.com/your-org/your-repo.git'
-   ```
-
-2. **Environment Variables**: Set required environment variables for production.
-
-## Command Line Usage
-
-### Local Environment Commands
+### Step 1: Setup Repository
 ```bash
-# Index repositories (local environment)
+# Copy your repository to the repos directory
+cp -r /path/to/your-repo ./repos/
+
+# Update config/local.yaml with the correct path
+# indexing:
+#   local_paths: ["./repos/your-repo"]
+```
+
+### Step 2: Index Your Code
+```bash
+# Clean start with enhanced indexing
+python -m app.cli --force-index --env local
+
+# Or just index normally
 python -m app.cli --index --env local
+```
 
-# Force complete re-indexing (ignores previous state)
-python -m app.cli --index --env local --force-reindex
+### Step 3: Test Search
+```bash
+# Test the enhanced search functionality
+python -m app.cli --test-search "How to implement authentication?" --env local
 
-# Clean all embeddings and start fresh
-python -m app.cli --index --env local --force-cleanup
-
-# Start API server (local)
+# Start the API server
 python -m app.cli --serve --env local
-
-# Test GitHub authentication
-python -m app.cli --auth-test --env local
-
-# List available repositories
-python -m app.cli --list-repos --env local
 ```
 
-### Production Environment Commands
+### Step 4: Query Your Codebase
 ```bash
-# Index repositories (production environment)
-python -m app.cli --index --env prod
-
-# Force complete re-indexing (ignores previous state)
-python -m app.cli --index --env prod --force-reindex
-
-# Clean all embeddings and start fresh
-python -m app.cli --index --env prod --force-cleanup
-
-# Start API server (production)
-python -m app.cli --serve --env prod
-
-# Test GitHub authentication
-python -m app.cli --auth-test --env prod
-
-# List available repositories
-python -m app.cli --list-repos --env prod
+# Example API queries
+curl -X POST "http://localhost:8000/ask" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "q": "How does the authentication system work?",
+       "k": 15,
+       "detailed_response": true,
+       "include_context": true
+     }'
 ```
 
-### Command Options
-- `--index`: Index repositories according to configuration
-- `--serve`: Start the FastAPI server
-- `--env`: Override APP_ENV (local|prod)
-- `--auth-test`: Test GitHub authentication
-- `--list-repos`: List available repositories
-- `--force-reindex`: Force complete re-indexing, ignoring previous state
-- `--force-cleanup`: Clean all embeddings and vector store before indexing
+## Enhanced API Response
 
-## Docker Commands
+The API now returns much richer information:
 
-### Local Development
+```json
+{
+  "answer": "Comprehensive answer with code examples and explanations...",
+  "sources": [
+    {
+      "repo": "my-app",
+      "path": "app/auth/github.py", 
+      "language": "python",
+      "module_name": "app.auth.github",
+      "is_test": false,
+      "is_config": false,
+      "preview": "Enhanced preview with file context...",
+      "relevance_score": 0.95
+    }
+  ],
+  "context_summary": {
+    "total_documents": 15,
+    "languages": ["python", "javascript"],
+    "file_types": [".py", ".js", ".md"],
+    "modules": ["app.auth", "app.api", "app.config"],
+    "test_files": 3,
+    "config_files": 2
+  },
+  "query_analysis": {
+    "is_how_to": true,
+    "code_related": true,
+    "mentions_specific_tech": ["python"]
+  },
+  "total_sources_found": 25
+}
+```
+
+## Advanced Usage
+
+### Environment Management
 ```bash
-# Run in detached mode
+# Production indexing with GitHub repositories
+python -m app.cli --env prod --index
+
+# Force cleanup (removes all indexes and embeddings)
+python -m app.cli --force-cleanup --env local
+
+# Complete re-indexing
+python -m app.cli --force-index --env prod
+```
+
+### Docker Deployment
+```bash
+# Local development
 docker compose up -d
 
-# Rebuild images
+# Production deployment  
+docker compose --profile prod up -d
+
+# Rebuild with latest changes
 docker compose up --build
 
 # View logs
@@ -105,45 +152,99 @@ docker compose logs -f
 docker compose down
 ```
 
-### Production
+### Testing Enhanced Features
 ```bash
-# Run in detached mode
-docker compose --profile prod up -d
+# Run comprehensive search test
+python test_enhanced_search.py
 
-# Rebuild images
-docker compose --profile prod up --build
-
-# View logs
-docker compose --profile prod logs -f
-
-# Stop services
-docker compose --profile prod down
+# Test specific queries
+python -m app.cli --test-search "Show me database configuration patterns"
+python -m app.cli --test-search "How to write unit tests for API endpoints"
+python -m app.cli --test-search "What is the project architecture"
 ```
 
-## API Usage
+## Enhanced Features in Detail
 
-Once the server is running, you can make requests to the `/ask` endpoint:
+### 1. Code-Aware Indexing
+- **Smart Chunking**: Preserves function, class, and logical boundaries
+- **Rich Metadata**: Language detection, test/config file identification
+- **Structure Analysis**: Extracts imports, exports, classes, functions
+- **Context Headers**: Each chunk includes file context and structure info
 
-```bash
-curl -X POST "http://localhost:8000/ask" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "q": "what is the name of repo",
-       "k": 12,
-       "repo": "cds-web"
-     }'
+### 2. Intelligent Search
+- **Query Analysis**: Understands what you're looking for (how-to, debugging, etc.)
+- **Multi-Stage Retrieval**: Vector search + reranking + related context
+- **Language Awareness**: Boosts results in relevant programming languages
+- **Context Expansion**: Finds related code from same files/modules
+
+### 3. Comprehensive Responses
+- **Detailed Answers**: Step-by-step explanations with code examples
+- **Source Attribution**: Rich metadata about where answers come from
+- **Context Summaries**: Overview of what was found in your codebase
+- **Fallback Handling**: Graceful degradation when AI services are unavailable
+
+### 4. Developer Experience
+- **Test Commands**: Easy way to test search functionality
+- **Force Operations**: Clean slate re-indexing capabilities
+- **Rich Logging**: Detailed information about indexing and search processes
+- **Configuration Validation**: Clear error messages for setup issues
+
+## Configuration Options
+
+### Indexing Configuration
+```yaml
+indexing:
+  chunk_size: 1500              # Size of text chunks (increased for context)
+  chunk_overlap: 200            # Overlap between chunks
+  max_file_mb: 2.0             # Maximum file size to index
+  include_globs: ["**/*"]       # Files to include
+  exclude_globs:                # Files to exclude
+    - "**/.git/**"
+    - "**/node_modules/**"
+    - "**/dist/**"
+    - "**/*.min.js"
+```
+
+### Retrieval Configuration
+```yaml
+retrieval:
+  top_k: 20                     # Number of results to return
+  use_reranker: true            # Enable cross-encoder reranking
+  similarity_threshold: 0.4     # Minimum similarity score
+  max_context_docs: 30          # Maximum documents for context
+  include_file_context: true    # Include related file context
+  boost_same_language: true     # Boost same language results
 ```
 
 ## Troubleshooting
 
-### Force Cleanup When Needed
-If you encounter issues with vector dimensions or corrupted embeddings:
+### Common Issues
+1. **No results found**: Check if repositories are properly indexed
+2. **Poor quality answers**: Try `--force-index` to rebuild with enhanced features
+3. **Slow performance**: Reduce `top_k` or disable reranking temporarily
+4. **Memory issues**: Reduce `chunk_size` or `max_file_mb`
+
+### Debug Commands
 ```bash
-python -m app.cli --force-cleanup --index --env local
+# Check indexing status
+python -m app.cli --test-search "test query" --env local
+
+# Verify configuration
+python -c "from app.config.loader import load_config; print(load_config())"
+
+# Test without reranking
+# Set use_reranker: false in config
 ```
 
-### Repository Naming Issues
-If search results show incorrect repository names, try force re-indexing:
+## Environment Variables
 ```bash
-python -m app.cli --index --env local --force-reindex
+# Required for some embedding providers
+export OPENAI_API_KEY="your-key"
+export GOOGLE_API_KEY="your-key"
+
+# For GitHub integration
+export GITHUB_TOKEN="your-token"
+
+# Gemini for chat responses
+export GEMINI_API_KEY="your-key"
 ```

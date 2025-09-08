@@ -17,6 +17,9 @@ def main():
 	ap.add_argument("--env", type=str, default=None, help="Override APP_ENV (local|prod)")
 	ap.add_argument("--auth-test", action="store_true", help="Test GitHub authentication")
 	ap.add_argument("--list-repos", action="store_true", help="List available repositories")
+	ap.add_argument("--force-cleanup", action="store_true", help="Remove all embeddings and indexes")
+	ap.add_argument("--force-index", action="store_true", help="Clean up and re-index all repositories")
+	ap.add_argument("--test-search", type=str, help="Test search functionality with a query")
 	args = ap.parse_args()
 
 	try:
@@ -70,6 +73,80 @@ def main():
 		logger.error(f"Failed to initialize indexer: {e}")
 		return 1
 
+	if args.force_cleanup:
+		try:
+			logger.info("Starting force cleanup - removing all embeddings and indexes")
+			idx.cleanup_all()
+			logger.info("Force cleanup completed successfully")
+			return 0
+		except Exception as e:
+			logger.error(f"Force cleanup failed: {e}")
+			return 1
+
+	if args.force_index:
+		try:
+			logger.info("Starting force index - cleaning up and re-indexing all repositories")
+			idx.cleanup_all()
+			logger.info("Cleanup completed, starting re-indexing...")
+			
+			if cfg.app_env == "local":
+				root = Path(cfg.indexing.local_repo_root).resolve()
+				logger.info(f"Re-indexing repositories from: {root}")
+				
+				if not root.exists() or not any(root.iterdir()):
+					logger.warning(f"No repositories found in {root}")
+					if cfg.indexing.local_paths:
+						logger.info("Re-indexing configured local paths instead")
+						idx.index_local_paths(cfg.indexing.local_paths)
+					else:
+						logger.warning("No local paths configured for indexing")
+				else:
+					idx.index_local_root(root)
+			else:
+				if not cfg.indexing.repo_urls:
+					logger.error("No repo_urls configured for prod. Set indexing.repo_urls in config.")
+					return 1
+				
+				if cfg.indexing.github_auth_required:
+					auth_manager = setup_github_auth(
+						cfg.indexing.github_token_env,
+						True
+					)
+					logger.info(f"Authenticated with GitHub as: {auth_manager.user_info.get('login', 'unknown')}")
+				
+				logger.info(f"Cloning and re-indexing {len(cfg.indexing.repo_urls)} repository URLs")
+				idx.index_repo_urls(cfg.indexing.repo_urls)
+			
+			logger.info("Force index completed successfully")
+			return 0
+		except Exception as e:
+			logger.error(f"Force index failed: {e}")
+			return 1
+
+	if args.test_search:
+		try:
+			from .search.retrieval import enhanced_search, create_context_summary
+			logger.info(f"Testing search with query: '{args.test_search}'")
+			
+			docs = enhanced_search(idx.store, args.test_search, cfg, k=10)
+			context_summary = create_context_summary(docs)
+			
+			logger.info(f"Found {len(docs)} relevant documents")
+			logger.info(f"Context summary: {context_summary}")
+			
+			for i, doc in enumerate(docs[:5]):
+				metadata = doc.metadata or {}
+				logger.info(f"\n--- Result {i+1} ---")
+				logger.info(f"File: {metadata.get('repo', 'unknown')}/{metadata.get('path', 'unknown')}")
+				logger.info(f"Language: {metadata.get('language', 'unknown')}")
+				logger.info(f"Module: {metadata.get('module_name', 'N/A')}")
+				logger.info(f"Preview: {doc.page_content[:200]}...")
+			
+			return 0
+		except Exception as e:
+			logger.error(f"Search test failed: {e}")
+			return 1
+
 	if args.index:
 		try:
 			if cfg.app_env == "local":
@@ -119,7 +196,11 @@ def main():
 			logger.error(f"Server failed to start: {e}")
 			return 1
 	
-	ap.print_help()
+	# If no action specified, show help
+	if not any([args.index, args.serve, args.auth_test, args.list_repos, args.force_cleanup, args.force_index, args.test_search]):
+		ap.print_help()
+		return 0
+	
 	return 0
 
 if __name__ == "__main__":

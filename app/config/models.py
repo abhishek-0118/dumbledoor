@@ -34,6 +34,10 @@ class RetrievalConfig(BaseModel):
 	alpha_hybrid: float
 	use_reranker: bool
 	cross_encoder_model: str
+	similarity_threshold: float = 0.5
+	max_context_docs: int = 30
+	include_file_context: bool = True
+	boost_same_language: bool = True
 
 class ServerConfig(BaseModel):
 	host: str
