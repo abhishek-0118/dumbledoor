@@ -5,3 +5,8 @@ lc_starter_lit.py
 lc_starter_lit_2.py
 .chroma
 ./chroma
+
+./repos
+repos/*
+repos/oms
+
