@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ..config.loader import load_config
 from ..indexing.indexer import RepoIndexer
 from ..search.retrieval import build_retriever, apply_cross_encoder_rerank, enhanced_search, create_context_summary
+from ..core.chat import create_chat_llm, estimate_token_cost
 from langchain.chains import RetrievalQA
 from langchain.schema import Document
 from pathlib import Path
@@ -145,12 +146,13 @@ async def ask(payload: AskIn):
 	enhanced_query = create_enhanced_prompt(payload.q, query_analysis, context_summary, payload.detailed_response)
 	
 	try:
-		from langchain_google_genai import ChatGoogleGenerativeAI
-		llm = ChatGoogleGenerativeAI(
-			model=_cfg.gemini_chat_model, 
-			google_api_key=_cfg.gemini_api_key, 
-			temperature=0.1
-		)
+		# Create LLM based on current method configuration
+		llm = create_chat_llm(_cfg.chat, _cfg.current_method)
+		
+		# Estimate token cost for the query
+		query_cost = estimate_token_cost(enhanced_query, _cfg.chat.model, _cfg.chat.provider)
+		logger.info(f"Query token estimate: {query_cost}")
+		
 		# custom QA chain with code-awared prompt
 		qa = RetrievalQA.from_chain_type(
 			llm=llm, 
@@ -163,6 +165,10 @@ async def ask(payload: AskIn):
 		
 		res = qa.invoke({"query": enhanced_query})
 		answer = res.get("result", "")
+		
+		# Estimate response token cost
+		response_cost = estimate_token_cost(answer, _cfg.chat.model, _cfg.chat.provider)
+		logger.info(f"Response token estimate: {response_cost}")
 		
 	except Exception as e:
 		logger.error(f"LLM query failed: {e}")
@@ -273,12 +279,14 @@ async def stream_answer(payload: AskIn):
         enhanced_query = create_enhanced_prompt(payload.q, query_analysis, context_summary, payload.detailed_response)
         
         try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            llm = ChatGoogleGenerativeAI(
-                model=_cfg.gemini_chat_model, 
-                google_api_key=_cfg.gemini_api_key, 
-                temperature=0.1
-            )
+            # Create LLM based on current method configuration
+            llm = create_chat_llm(_cfg.chat, _cfg.current_method)
+            
+            # Estimate token cost for the query
+            query_cost = estimate_token_cost(enhanced_query, _cfg.chat.model, _cfg.chat.provider)
+            yield create_sse_message({
+                "token_estimate": query_cost
+            }, "cost_estimate")
             
             qa = RetrievalQA.from_chain_type(
                 llm=llm, 
@@ -292,6 +300,13 @@ async def stream_answer(payload: AskIn):
             # Generate the answer
             res = qa.invoke({"query": enhanced_query})
             answer = res.get("result", "")
+            
+            # Estimate response token cost
+            if answer:
+                response_cost = estimate_token_cost(answer, _cfg.chat.model, _cfg.chat.provider)
+                yield create_sse_message({
+                    "response_token_estimate": response_cost
+                }, "cost_estimate")
             
             # Stream the answer in chunks with proper markdown formatting
             if answer:

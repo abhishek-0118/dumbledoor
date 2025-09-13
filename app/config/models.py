@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Union
 import os
 
 
@@ -43,12 +43,20 @@ class ServerConfig(BaseModel):
 	host: str
 	port: int
 
+class ChatConfig(BaseModel):
+	provider: str  # "gemini", "openai", etc.
+	model: str
+	temperature: float = 0.1
+	api_key_env: Optional[str] = None
+	max_tokens: Optional[int] = None
+	additional_kwargs: Optional[dict] = None
+
 class AppConfig(BaseModel):
 	embedding: EmbeddingConfig
 	backend: BackendConfig
 	indexing: IndexingConfig
 	retrieval: RetrievalConfig
 	server: ServerConfig
-	gemini_api_key: Optional[str] = None
-	gemini_chat_model: str
+	chat: ChatConfig
+	current_method: str  # "gemini", "openai"
 	app_env: str

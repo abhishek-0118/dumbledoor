@@ -8,7 +8,7 @@ from typing import List, Optional
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from ..config.models import AppConfig
-from ..core.embeddings import create_embedding_fn
+from ..core.embeddings import create_optimized_embedding_fn
 from ..db.vectorstores import create_vectorstore
 from ..repos.github import clone_or_pull
 
@@ -57,7 +57,7 @@ class RepoIndexer:
 			],
 			keep_separator=True,
 		)
-		self.embeddings, self.dim = create_embedding_fn(cfg.embedding)
+		self.embeddings, self.dim = create_optimized_embedding_fn(cfg.embedding, enable_optimizations=True)
 		self.store = create_vectorstore(cfg.backend, self.embeddings, self.dim)
 
 	def cleanup_all(self):

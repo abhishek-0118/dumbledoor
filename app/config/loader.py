@@ -110,13 +110,22 @@ def _apply_env_overrides(cfg: AppConfig) -> None:
 	if os.getenv("BIND_PORT"):
 		cfg.server.port = int(os.getenv("BIND_PORT"))
 	
-	_api_key = (
-		os.getenv("GEMINI_API_KEY")
-		or os.getenv("GOOGLE_API_KEY")
-		or os.getenv("GOOGLE_GENAI_API_KEY")
-	)
-	if _api_key:
-		cfg.gemini_api_key = _api_key
+	# Chat configuration overrides
+	if os.getenv("CHAT_PROVIDER"):
+		cfg.chat.provider = os.getenv("CHAT_PROVIDER")
+	if os.getenv("CHAT_MODEL"):
+		cfg.chat.model = os.getenv("CHAT_MODEL")
+	if os.getenv("CHAT_TEMPERATURE"):
+		cfg.chat.temperature = float(os.getenv("CHAT_TEMPERATURE"))
+	if os.getenv("CHAT_API_KEY_ENV"):
+		cfg.chat.api_key_env = os.getenv("CHAT_API_KEY_ENV")
+	if os.getenv("CHAT_MAX_TOKENS"):
+		cfg.chat.max_tokens = int(os.getenv("CHAT_MAX_TOKENS"))
+	if os.getenv("CURRENT_METHOD"):
+		cfg.current_method = os.getenv("CURRENT_METHOD")
 	
+	# Legacy support for existing environment variables
 	if os.getenv("GEMINI_CHAT_MODEL"):
-		cfg.gemini_chat_model = os.getenv("GEMINI_CHAT_MODEL")
+		cfg.chat.model = os.getenv("GEMINI_CHAT_MODEL")
+		cfg.chat.provider = "gemini"
+		cfg.current_method = "gemini"
