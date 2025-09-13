@@ -31,9 +31,26 @@ def create_embedding_fn(cfg: EmbeddingConfig) -> Tuple[Any, int]:
 def _create_huggingface_embeddings(cfg: EmbeddingConfig, encode_kwargs: dict) -> Tuple[HuggingFaceEmbeddings, int]:
 	logger.info(f"Creating HuggingFace embeddings with model: {cfg.model_name}")
 	
+	# Check for GPU availability and configure device
+	import torch
+	device = "cuda" if torch.cuda.is_available() else "cpu"
+	if "device" in encode_kwargs:
+		device = encode_kwargs["device"]
+	
+	logger.info(f"Using device: {device}")
+	
+	# Enhanced encode_kwargs for better performance
+	enhanced_kwargs = {
+		"normalize_embeddings": encode_kwargs.get("normalize_embeddings", True),
+		"batch_size": encode_kwargs.get("batch_size", 32),
+		"device": device,
+		"show_progress_bar": True,
+	}
+	
 	emb = HuggingFaceEmbeddings(
 		model_name=cfg.model_name,
-		encode_kwargs=encode_kwargs,
+		model_kwargs={"device": device},
+		encode_kwargs=enhanced_kwargs,
 	)
 	
 	if cfg.model_dimension:

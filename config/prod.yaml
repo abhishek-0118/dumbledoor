@@ -1,11 +1,15 @@
 embedding:
-  model_name: sentence-transformers/all-roberta-large-v1
+  # model_name: sentence-transformers/all-roberta-large-v1
+  model_name: intfloat/e5-large-v2
   normalize: true
   min_dimension: 1024
   api_provider: huggingface
   model_dimension: 1024
   encode_kwargs:
     normalize_embeddings: true
+    # GPU optimization
+    device: "cuda"  
+    batch_size: 32  
 
 backend:
   chroma_dir: ./.chroma
@@ -21,7 +25,7 @@ indexing:
   max_file_mb: 1.5
   chunk_size: 1200
   chunk_overlap: 150
-  batch_size: 4000
+  batch_size: 1000
   github_token_env: GITHUB_TOKEN
   github_auth_required: true
 
