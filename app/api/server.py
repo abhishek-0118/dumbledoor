@@ -1,8 +1,9 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, Query
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Query, HTTPException, Depends, Request
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import asyncio
@@ -11,6 +12,14 @@ from ..config.loader import load_config
 from ..indexing.indexer import RepoIndexer
 from ..search.retrieval import build_retriever, apply_cross_encoder_rerank, enhanced_search, create_context_summary
 from ..core.chat import create_chat_llm, estimate_token_cost
+from ..core.chat_history import ChatHistoryManager
+from ..core.conversation_buffer import ConversationBufferManager
+from ..auth.google_oauth import oauth_manager, get_current_user, get_optional_user
+from ..models import (
+    User, ChatRequest, ChatResponse, SessionCreate, SessionUpdate, 
+    MessageRole, PyObjectId
+)
+from ..db.mongodb import init_mongodb, close_mongodb, mongodb
 from langchain.chains import RetrievalQA
 from langchain.schema import Document
 from pathlib import Path
@@ -60,12 +69,27 @@ class AskOut(BaseModel):
 _indexer: Optional[RepoIndexer] = None
 _cfg = None
 _cost_tracker = None
+_chat_history_manager: Optional[ChatHistoryManager] = None
+_conversation_manager: Optional[ConversationBufferManager] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _indexer, _cfg, _cost_tracker
+    global _indexer, _cfg, _cost_tracker, _chat_history_manager, _conversation_manager
     _cfg = load_config()
+    
+    # Initialize MongoDB
+    try:
+        await init_mongodb()
+        logger.info("MongoDB connected successfully")
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB: {e}")
+        raise
+    
+    # Initialize conversation and chat history managers
+    _conversation_manager = ConversationBufferManager(_cfg.chat)
+    _chat_history_manager = ChatHistoryManager(_conversation_manager)
+    
     _indexer = RepoIndexer(_cfg)
     
     # Setup cost tracking if enabled
@@ -91,7 +115,15 @@ async def lifespan(app: FastAPI):
             _indexer.index_local_root(root)
     except Exception as e:
         logger.exception(f"Indexing on startup failed: {e}")
+    
     yield
+    
+    # Cleanup
+    try:
+        await close_mongodb()
+        logger.info("MongoDB connection closed")
+    except Exception as e:
+        logger.error(f"Error closing MongoDB: {e}")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -515,6 +547,39 @@ def create_enhanced_prompt(original_query: str, analysis: Dict[str, Any], contex
     
     return " ".join(enhanced_parts)
 
+
+def create_enhanced_prompt_with_context(
+    original_query: str, 
+    analysis: Dict[str, Any], 
+    context_summary: Dict[str, Any],
+    conversation_context: str,
+    detailed: bool
+) -> str:
+    """Create an enhanced prompt with conversation context"""
+    
+    enhanced_parts = []
+    
+    # Add conversation context if available
+    if conversation_context and conversation_context.strip():
+        enhanced_parts.append(f"Conversation context:\n{conversation_context}\n")
+    
+    # Add current query
+    enhanced_parts.append(f"Current question: {original_query}")
+    
+    # Add context about the codebase
+    if context_summary.get("languages"):
+        enhanced_parts.append(f"Searching in {', '.join(context_summary['languages'])} code from {context_summary.get('total_documents', 0)} files")
+    
+    # Add enhanced prompts based on analysis
+    for key, template in ENHANCED_PROMPT_TEMPLATES.items():
+        if key == "detailed" and detailed:
+            enhanced_parts.append(template)
+        elif key.startswith("is_") and analysis.get(key):
+            enhanced_parts.append(template)
+            break
+    
+    return "\n".join(enhanced_parts)
+
 def create_code_aware_prompt(detailed: bool, analysis: Dict[str, Any]):
     """Create a code-aware prompt template for the LLM with markdown formatting"""
     from langchain.prompts import PromptTemplate
@@ -595,6 +660,336 @@ class WebhookIn(BaseModel):
     repo_url: Optional[str] = None
     repo_name: Optional[str] = None
     changed_files: List[str]
+
+# Authentication Endpoints
+
+@app.get("/auth/google/login")
+async def google_login(state: Optional[str] = Query(None)):
+    """Initiate Google OAuth login"""
+    try:
+        auth_url = oauth_manager.get_authorization_url(state)
+        return {"authorization_url": auth_url}
+    except Exception as e:
+        logger.error(f"Google login initiation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/auth/google/callback")
+async def google_callback(code: str = Query(...), state: Optional[str] = Query(None)):
+    """Handle Google OAuth callback"""
+    try:
+        auth_result = await oauth_manager.handle_oauth_callback(code, state)
+        return auth_result
+    except Exception as e:
+        logger.error(f"Google OAuth callback failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/auth/logout")
+async def logout(current_user: User = Depends(get_current_user)):
+    """Logout current user"""
+    # In a real implementation, you'd invalidate the JWT token
+    return {"message": "Logged out successfully"}
+
+
+@app.get("/auth/me")
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """Get current user information"""
+    return {
+        "user": {
+            "id": str(current_user.id),
+            "email": current_user.email,
+            "name": current_user.name,
+            "picture_url": current_user.picture_url,
+            "verified_email": current_user.verified_email
+        }
+    }
+
+
+# Chat History Endpoints
+
+@app.post("/chat/sessions")
+async def create_chat_session(
+    session_data: SessionCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new chat session"""
+    try:
+        session = await _chat_history_manager.create_session(current_user.id, session_data)
+        return {"session": session.dict()}
+    except Exception as e:
+        logger.error(f"Failed to create chat session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/chat/sessions")
+async def get_user_sessions(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user)
+):
+    """Get user's chat sessions"""
+    try:
+        sessions = await _chat_history_manager.get_user_sessions(
+            current_user.id, limit, offset
+        )
+        return {"sessions": sessions}
+    except Exception as e:
+        logger.error(f"Failed to get user sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/chat/sessions/{session_id}")
+async def get_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get a specific chat session"""
+    try:
+        session = await _chat_history_manager.get_session(
+            PyObjectId(session_id), current_user.id
+        )
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"session": session.dict()}
+    except Exception as e:
+        logger.error(f"Failed to get session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/chat/sessions/{session_id}")
+async def update_session(
+    session_id: str,
+    update_data: SessionUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a chat session"""
+    try:
+        session = await _chat_history_manager.update_session(
+            PyObjectId(session_id), current_user.id, update_data
+        )
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"session": session.dict()}
+    except Exception as e:
+        logger.error(f"Failed to update session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/chat/sessions/{session_id}")
+async def delete_session(
+    session_id: str,
+    hard_delete: bool = Query(False),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a chat session"""
+    try:
+        success = await _chat_history_manager.delete_session(
+            PyObjectId(session_id), current_user.id, hard_delete
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"message": "Session deleted successfully"}
+    except Exception as e:
+        logger.error(f"Failed to delete session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/chat/sessions/{session_id}/messages")
+async def get_session_messages(
+    session_id: str,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user)
+):
+    """Get messages for a chat session"""
+    try:
+        messages = await _chat_history_manager.get_session_messages(
+            PyObjectId(session_id), limit, offset
+        )
+        return {"messages": [msg.dict() for msg in messages]}
+    except Exception as e:
+        logger.error(f"Failed to get session messages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/sessions/{session_id}/messages")
+async def send_chat_message(
+    session_id: str,
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Send a message in a chat session"""
+    start_time = time.time()
+    
+    try:
+        # Verify session belongs to user
+        session = await _chat_history_manager.get_session(
+            PyObjectId(session_id), current_user.id
+        )
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Add user message to history
+        user_message = await _chat_history_manager.add_message(
+            PyObjectId(session_id),
+            MessageRole.USER,
+            request.message
+        )
+        
+        # Get conversation context for enhanced prompt
+        conversation_context = await _chat_history_manager.get_session_context(
+            PyObjectId(session_id)
+        )
+        
+        # Perform search and generate response (reuse existing logic)
+        query_analysis = analyze_query(request.message)
+        docs = enhanced_search(
+            _indexer.store, 
+            request.message, 
+            _cfg, 
+            request.repo, 
+            request.k,
+            request.include_context
+        )
+        
+        # Truncate docs to fit within token limits
+        truncated_docs = truncate_context_for_model(docs, _cfg.chat.model, max_context_tokens=1200)
+        context_summary = create_context_summary(truncated_docs)
+
+        ret = build_retriever(_indexer.store, _cfg, request.repo, len(truncated_docs), request.alpha)
+        
+        # Create enhanced prompt with conversation context
+        enhanced_query = create_enhanced_prompt_with_context(
+            request.message, query_analysis, context_summary, 
+            conversation_context, request.detailed_response
+        )
+        
+        try:
+            # Create LLM and generate response
+            llm = create_chat_llm(_cfg.chat, _cfg.current_method)
+            
+            # Track costs
+            if _cost_tracker:
+                query_cost = _cost_tracker.track_chat_cost(
+                    provider=_cfg.chat.provider,
+                    model=_cfg.chat.model,
+                    input_text=enhanced_query,
+                    query=request.message,
+                    context_size=len(truncated_docs)
+                )
+            else:
+                query_cost = estimate_token_cost(enhanced_query, _cfg.chat.model, _cfg.chat.provider)
+            
+            qa = RetrievalQA.from_chain_type(
+                llm=llm, 
+                retriever=ret, 
+                return_source_documents=True,
+                chain_type_kwargs={
+                    "prompt": create_code_aware_prompt(request.detailed_response, query_analysis)
+                }
+            )
+            
+            res = qa.invoke({"query": enhanced_query})
+            answer = res.get("result", "")
+            
+            # Track response costs
+            if _cost_tracker and answer:
+                response_cost = _cost_tracker.track_chat_cost(
+                    provider=_cfg.chat.provider,
+                    model=_cfg.chat.model,
+                    input_text="",
+                    output_text=answer,
+                    context_size=0
+                )
+            else:
+                response_cost = estimate_token_cost(answer, _cfg.chat.model, _cfg.chat.provider)
+            
+        except Exception as e:
+            logger.error(f"LLM query failed: {e}")
+            answer = create_fallback_answer(docs, request.message, query_analysis)
+            response_cost = {"estimated_cost_usd": 0.0}
+        
+        # Calculate response time
+        response_time_ms = int((time.time() - start_time) * 1000)
+        
+        # Prepare message metadata
+        metadata = {
+            "query_analysis": query_analysis,
+            "sources": [
+                {
+                    "repo": doc.metadata.get("repo"),
+                    "path": doc.metadata.get("path"),
+                    "file_type": doc.metadata.get("file_type"),
+                    "language": doc.metadata.get("language"),
+                    "preview": doc.page_content[:600]
+                }
+                for doc in truncated_docs[:request.k]
+            ],
+            "context_summary": context_summary,
+            "total_sources_found": len(docs),
+            "token_usage": query_cost,
+            "estimated_cost": response_cost.get("estimated_cost_usd", 0.0),
+            "model_used": _cfg.chat.model,
+            "provider_used": _cfg.chat.provider,
+            "response_time_ms": response_time_ms
+        }
+        
+        # Add assistant message to history
+        assistant_message = await _chat_history_manager.add_message(
+            PyObjectId(session_id),
+            MessageRole.ASSISTANT,
+            answer,
+            metadata
+        )
+        
+        # Update conversation concepts and files
+        concepts = query_analysis.get("mentions_specific_tech", [])
+        active_files = [
+            doc.metadata.get("path", "") for doc in truncated_docs[:5] 
+            if doc.metadata.get("path")
+        ]
+        await _conversation_manager.update_conversation_concepts(
+            PyObjectId(session_id), concepts, active_files, request.repo
+        )
+        
+        return ChatResponse(
+            session_id=session_id,
+            message_id=str(assistant_message.id),
+            response=answer,
+            sources=metadata["sources"],
+            context_summary=context_summary,
+            query_analysis=query_analysis,
+            total_sources_found=len(docs),
+            token_usage=query_cost,
+            estimated_cost=metadata["estimated_cost"]
+        )
+        
+    except Exception as e:
+        logger.error(f"Chat message failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/chat/sessions/{session_id}/buffer-stats")
+async def get_session_buffer_stats(
+    session_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get conversation buffer statistics for a session"""
+    try:
+        # Verify session belongs to user
+        session = await _chat_history_manager.get_session(
+            PyObjectId(session_id), current_user.id
+        )
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        stats = await _chat_history_manager.get_buffer_stats(PyObjectId(session_id))
+        return {"buffer_stats": stats}
+    except Exception as e:
+        logger.error(f"Failed to get buffer stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/webhook/github")
 async def webhook(payload: WebhookIn):

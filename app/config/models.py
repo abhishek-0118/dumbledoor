@@ -61,6 +61,35 @@ class ChatConfig(BaseModel):
 	max_tokens: Optional[int] = None
 	additional_kwargs: Optional[dict] = None
 
+class MongoDBConfig(BaseModel):
+	connection_string: str = "mongodb://localhost:27017"
+	database_name: str = "starkfoundation"
+	max_pool_size: int = 10
+	min_pool_size: int = 1
+	max_idle_time_ms: int = 30000
+	connect_timeout_ms: int = 10000
+	server_selection_timeout_ms: int = 5000
+
+class AuthConfig(BaseModel):
+	google_client_id: Optional[str] = None
+	google_client_secret: Optional[str] = None
+	google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
+	jwt_secret_key: Optional[str] = None
+	jwt_algorithm: str = "HS256"
+	jwt_expire_hours: int = 24
+	session_expire_hours: int = 168  # 7 days
+	require_email_verification: bool = False
+
+class ConversationConfig(BaseModel):
+	max_token_limit: int = 4000
+	max_messages_per_session: int = 20
+	enable_summarization: bool = True
+	summary_trigger_ratio: float = 0.8  # Trigger summary when 80% of token limit is reached
+	keep_recent_messages: int = 8
+	enable_concept_tracking: bool = True
+	max_tracked_concepts: int = 20
+	max_tracked_files: int = 15
+
 class LoggingConfig(BaseModel):
 	level: str = "INFO"
 	file: str = "./logs/app.log"
@@ -77,6 +106,9 @@ class AppConfig(BaseModel):
 	retrieval: RetrievalConfig
 	server: ServerConfig
 	chat: ChatConfig
+	mongodb: MongoDBConfig
+	auth: AuthConfig
+	conversation: ConversationConfig
 	current_method: str  # "gemini", "openai"
 	app_env: str
 	logging: Optional[LoggingConfig] = None

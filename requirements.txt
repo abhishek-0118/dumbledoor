@@ -15,3 +15,7 @@ torch
 google-auth
 google-ai-generativelanguage
 requests
+pymongo
+motor
+google-auth-oauthlib
+google-auth-httplib2
