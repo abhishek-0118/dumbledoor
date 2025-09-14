@@ -11,15 +11,18 @@ from ..config.models import AppConfig
 from ..core.embeddings import create_optimized_embedding_fn
 from ..db.vectorstores import create_vectorstore
 from ..repos.github import clone_or_pull
+from ..constants import (
+    CODE_EXTENSIONS, LANGUAGE_MAP, TEST_FILE_INDICATORS, CONFIG_FILE_INDICATORS,
+    TEXT_SPLITTER_SEPARATORS, CONTEXT_TEMPLATES
+)
 
-CODE_EXTS = set(".py .js .ts .tsx .jsx .go .java .kt .rs .c .cpp .h .hpp .rb .php .scala .sql .sh .md .yml .yaml .toml .ini".split())
 logger = logging.getLogger("app.indexing.indexer")
 
 
 def _should_index(path: Path, includes: List[str], excludes: List[str], max_mb: float) -> bool:
 	if path.is_dir():
 		return False
-	if path.suffix.lower() not in CODE_EXTS:
+	if path.suffix.lower() not in CODE_EXTENSIONS:
 		return False
 	s = str(path)
 	if includes and not any(Path(".").joinpath(s).match(g.strip()) for g in includes):
@@ -37,24 +40,10 @@ def _should_index(path: Path, includes: List[str], excludes: List[str], max_mb: 
 class RepoIndexer:
 	def __init__(self, cfg: AppConfig):
 		self.cfg = cfg
-		# Enhanced text splitter for better code understanding
 		self.splitter = RecursiveCharacterTextSplitter(
 			chunk_size=cfg.indexing.chunk_size,
 			chunk_overlap=cfg.indexing.chunk_overlap,
-			separators=[
-				"\n\n",  # Paragraph breaks
-				"\nclass ",  # Class definitions
-				"\ndef ",   # Function definitions
-				"\n@",      # Decorators
-				"\nif ",    # Control structures
-				"\nfor ",
-				"\nwhile ",
-				"\ntry:",
-				"\nwith ",
-				"\n",       # Line breaks
-				" ",        # Word breaks
-				""
-			],
+			separators=TEXT_SPLITTER_SEPARATORS,
 			keep_separator=True,
 		)
 		self.embeddings, self.dim = create_optimized_embedding_fn(cfg.embedding, enable_optimizations=True)
@@ -144,54 +133,17 @@ class RepoIndexer:
 
 	def _detect_language(self, file_type: str) -> str:
 		"""Detect programming language from file extension"""
-		language_map = {
-			'.py': 'python',
-			'.js': 'javascript', 
-			'.ts': 'typescript',
-			'.tsx': 'typescript',
-			'.jsx': 'javascript',
-			'.go': 'go',
-			'.java': 'java',
-			'.kt': 'kotlin',
-			'.rs': 'rust',
-			'.c': 'c',
-			'.cpp': 'cpp',
-			'.h': 'c',
-			'.hpp': 'cpp',
-			'.rb': 'ruby',
-			'.php': 'php',
-			'.scala': 'scala',
-			'.sql': 'sql',
-			'.sh': 'bash',
-			'.md': 'markdown',
-			'.yml': 'yaml',
-			'.yaml': 'yaml',
-			'.toml': 'toml',
-			'.ini': 'ini',
-			'.json': 'json',
-			'.xml': 'xml',
-			'.html': 'html',
-			'.css': 'css',
-		}
-		return language_map.get(file_type.lower(), 'text')
+		return LANGUAGE_MAP.get(file_type.lower(), 'text')
 
 	def _is_test_file(self, path: str) -> bool:
 		"""Check if file is a test file"""
 		path_lower = path.lower()
-		return any(indicator in path_lower for indicator in [
-			'test', 'spec', '__test__', '__spec__', 'tests/', 'spec/',
-			'.test.', '.spec.', '_test.', '_spec.'
-		])
+		return any(indicator in path_lower for indicator in TEST_FILE_INDICATORS)
 
 	def _is_config_file(self, path: str) -> bool:
 		"""Check if file is a configuration file"""
 		path_lower = path.lower()
-		config_indicators = [
-			'config', 'conf', 'settings', 'setup', 'makefile', 'dockerfile',
-			'.env', '.ini', '.toml', '.yaml', '.yml', '.json', 'package.json',
-			'requirements.txt', 'go.mod', 'cargo.toml'
-		]
-		return any(indicator in path_lower for indicator in config_indicators)
+		return any(indicator in path_lower for indicator in CONFIG_FILE_INDICATORS)
 
 	def _extract_module_name(self, path: str, file_type: str) -> str:
 		"""Extract module/class name from file path"""
@@ -222,12 +174,11 @@ class RepoIndexer:
 		"""Create enhanced content with additional context for better understanding"""
 		
 		# Add file header with context
-		header = f"""FILE: {rel_path}
-REPOSITORY: {repo_name}
-LANGUAGE: {self._detect_language(file_path.suffix)}
-PATH: {rel_path}
-
-"""
+		header = CONTEXT_TEMPLATES["file_header"].format(
+			rel_path=rel_path,
+			repo_name=repo_name,
+			language=self._detect_language(file_path.suffix)
+		)
 		
 		# For code files, try to extract key structural information
 		file_type = file_path.suffix.lower()
@@ -239,7 +190,7 @@ PATH: {rel_path}
 			structure_info = ""
 		
 		if structure_info:
-			header += f"STRUCTURE:\n{structure_info}\n\n"
+			header += CONTEXT_TEMPLATES["structure_header"].format(structure_info=structure_info)
 		
 		return header + text
 

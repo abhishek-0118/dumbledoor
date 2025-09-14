@@ -1,9 +1,10 @@
 embedding:
-  model_name: sentence-transformers/all-roberta-large-v1
+  model_name: text-embedding-3-large
   normalize: true
   min_dimension: 1024
-  api_provider: huggingface
+  api_provider: openai
   model_dimension: 1024
+  api_key_env: OPENAI_API_KEY
   encode_kwargs:
     normalize_embeddings: true
 
@@ -15,41 +16,60 @@ indexing:
   local_repo_root: ./repos
   repo_urls:
     - 'https://github.com/Orange-Health/citadel.git'
-    - 'https://github.com/Orange-Health/oms.git' 
   include_globs: ["**/*"]
-  exclude_globs: ["**/.git/**","**/.github/**","**/node_modules/**","**/dist/**","**/build/**","**/*.min.js","**/*.png","**/*.jpg","**/*.jpeg","**/*.pdf"]
+  exclude_globs: ["**/.git/**","**/.github/**","**/node_modules/**","**/dist/**","**/build/**","**/*.min.js","**/*.png","**/*.jpg","**/*.jpeg","**/*.pdf","**/__pycache__/**","**/venv/**","**/.venv/**","**/target/**","**/bin/**","**/.DS_Store","**/Thumbs.db"]
   max_file_mb: 1.5
-  chunk_size: 1200
-  chunk_overlap: 150
-  batch_size: 4000
+  chunk_size: 1000  # Smaller chunks for large scale
+  chunk_overlap: 100
+  batch_size: 6000  # Larger batches for production
   github_token_env: GITHUB_TOKEN
   github_auth_required: true
+  enable_incremental: true
+  parallelism: 6
+  cache_embeddings: true
+  compression_enabled: true
 
 retrieval:
-  top_k: 12
+  top_k: 8  # Optimized for production
   alpha_hybrid: 0.3
-  use_reranker: false
+  use_reranker: true  # Enable for better results
   cross_encoder_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  similarity_threshold: 0.3
+  max_context_docs: 10
+  max_context_tokens: 600  # Very aggressive for cost control
+  include_file_context: true
+  boost_same_language: true
+  enable_caching: true
+  cache_ttl: 600  # Longer cache for production
 
 server:
   host: 0.0.0.0
   port: 8001
 
 chat:
-  provider: gemini
-  model: gemini-1.5-flash
+  provider: openai
+  model: gpt-3.5-turbo  # Use cheaper model for production
   temperature: 0.1
-  api_key_env: GEMINI_API_KEY
-  max_tokens: 4096
+  api_key_env: OPENAI_API_KEY
+  max_tokens: 600  # Aggressive cost optimization
 
-current_method: gemini
+current_method: openai
 app_env: prod
 
-# Alternative OpenAI configuration (uncomment to use):
+# Alternative Gemini configuration (uncomment to use):
 # chat:
-#   provider: openai
-#   model: gpt-3.5-turbo
+#   provider: gemini
+#   model: gemini-1.5-flash
 #   temperature: 0.1
-#   api_key_env: OPENAI_API_KEY
+#   api_key_env: GEMINI_API_KEY
 #   max_tokens: 4096
-# current_method: openai
+# current_method: gemini
+
+logging:
+  level: INFO
+  file: ./logs/app.log
+  enable_cost_tracking: true
+  cost_log_file: ./logs/cost_history.log
+  log_token_usage: true
+  max_log_size: "10MB"
+  backup_count: 5

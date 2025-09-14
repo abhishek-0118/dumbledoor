@@ -3,6 +3,10 @@ import os
 from typing import Any, Optional
 import tiktoken
 from ..config.models import ChatConfig
+from ..constants import (
+    MODEL_COSTS, DEFAULT_MODEL_COSTS, EMBEDDING_COSTS, DEFAULT_EMBEDDING_COSTS,
+    TOKENIZER_MODELS, DEFAULT_ENV_VARS, DEFAULT_VALUES
+)
 
 logger = logging.getLogger("app.core.chat")
 
@@ -11,16 +15,18 @@ def create_chat_llm(chat_config: ChatConfig, current_method: str) -> Any:
     """Create a chat LLM based on the current method and configuration"""
     
     # Validate current_method matches chat provider
-    if current_method != chat_config.provider:
-        logger.warning(f"current_method '{current_method}' doesn't match chat provider '{chat_config.provider}'. Using provider setting.")
-        current_method = chat_config.provider
+    if current_method.lower() != chat_config.provider.lower():
+        logger.warning(f"current_method '{current_method}' doesn't match chat provider '{chat_config.provider}'. Using current_method setting.")
+        effective_method = current_method.lower()
+    else:
+        effective_method = current_method.lower()
     
-    if current_method.lower() == "gemini":
+    if effective_method == "gemini":
         return _create_gemini_chat(chat_config)
-    elif current_method.lower() == "openai":
+    elif effective_method == "openai":
         return _create_openai_chat(chat_config)
     else:
-        raise ValueError(f"Unsupported chat method: {current_method}. Supported methods: gemini, openai")
+        raise ValueError(f"Unsupported chat method: {effective_method}. Supported methods: gemini, openai")
 
 
 def _create_gemini_chat(chat_config: ChatConfig) -> Any:
@@ -161,34 +167,15 @@ def estimate_token_cost(text: str, model: str, provider: str) -> dict:
 def _get_cost_per_1k_tokens(model: str, provider: str) -> float:
     """Get cost per 1K tokens for different models and providers"""
     
-    # OpenAI pricing (as of 2024)
-    openai_costs = {
-        "gpt-4": 0.03,  # Input tokens
-        "gpt-4-turbo": 0.01,
-        "gpt-3.5-turbo": 0.0015,
-        "gpt-3.5-turbo-16k": 0.003,
-    }
-    
-    # Gemini pricing (estimated, as pricing varies)
-    gemini_costs = {
-        "gemini-1.5-flash": 0.0002,
-        "gemini-1.5-pro": 0.0035,
-        "gemini-pro": 0.0005,
-    }
-    
-    if provider.lower() == "openai":
-        for model_key, cost in openai_costs.items():
+    provider_key = provider.lower()
+    if provider_key in MODEL_COSTS:
+        costs = MODEL_COSTS[provider_key]
+        for model_key, cost in costs.items():
             if model_key in model.lower():
                 return cost
-        return 0.002  # Default OpenAI cost
+        return DEFAULT_MODEL_COSTS.get(provider_key, DEFAULT_MODEL_COSTS["default"])
     
-    elif provider.lower() == "gemini":
-        for model_key, cost in gemini_costs.items():
-            if model_key in model.lower():
-                return cost
-        return 0.0005  # Default Gemini cost
-    
-    return 0.001  # Default cost
+    return DEFAULT_MODEL_COSTS["default"]
 
 
 def estimate_embeddings_cost(text: str, provider: str, model: str) -> dict:

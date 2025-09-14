@@ -3,6 +3,8 @@ import os
 from typing import Optional, List, Dict, Any
 from langchain.schema import Document
 from ..config.models import AppConfig
+from .fast_retrieval import create_fast_retriever
+from .openai_reranker import openai_rerank_documents, embedding_similarity_rerank, lightweight_rerank
 
 logger = logging.getLogger("app.search.retrieval")
 
@@ -27,14 +29,23 @@ def build_retriever(store, cfg: AppConfig, repo_prefix: Optional[str], k: int, a
 
 def enhanced_search(store, query: str, cfg: AppConfig, repo_prefix: Optional[str] = None, 
                    k: int = 12, include_related: bool = True) -> List[Document]:
-	"""Enhanced search that finds relevant documents and related context"""
+	"""Enhanced search with fast retrieval optimizations"""
 	
-	# Primary search
-	retriever = build_retriever(store, cfg, repo_prefix, k, cfg.retrieval.alpha_hybrid)
-	primary_docs = retriever.get_relevant_documents(query)
+	# Use fast retriever if caching is enabled
+	if getattr(cfg.retrieval, 'enable_caching', False):
+		fast_retriever = create_fast_retriever(store, cfg)
+		primary_docs = fast_retriever.retrieve(
+			query, repo_prefix, k, cfg.retrieval.alpha_hybrid
+		)
+	else:
+		retriever = build_retriever(store, cfg, repo_prefix, k, cfg.retrieval.alpha_hybrid)
+		primary_docs = retriever.get_relevant_documents(query)
 	
-	# Apply reranking to primary results
-	reranked_docs = apply_cross_encoder_rerank(primary_docs, query, k, cfg)
+	# Apply reranking only if not using fast retrieval (which has lightweight ranking)
+	if not getattr(cfg.retrieval, 'enable_caching', False):
+		reranked_docs = smart_rerank(primary_docs, query, k, cfg)
+	else:
+		reranked_docs = primary_docs[:k]
 	
 	if not include_related:
 		return reranked_docs
@@ -95,58 +106,32 @@ def find_related_context(store, primary_docs: List[Document], cfg: AppConfig, ma
 	return related_docs[:max_related]
 
 
-def apply_cross_encoder_rerank(docs: List[Document], query: str, top_k: int, cfg: AppConfig) -> List[Document]:
-	"""Enhanced cross-encoder reranking with code-aware scoring"""
+def smart_rerank(docs: List[Document], query: str, top_k: int, cfg: AppConfig) -> List[Document]:
+	"""Smart reranking using the best available method"""
 	if not cfg.retrieval.use_reranker or not docs:
 		return docs[:top_k]
 	
-	try:
-		from sentence_transformers import CrossEncoder
-		ce = CrossEncoder(cfg.retrieval.cross_encoder_model)
-		
-		# Prepare query-document pairs with enhanced context
-		pairs = []
-		for doc in docs:
-			# Create enhanced query with document metadata context
-			enhanced_query = query
-			metadata = doc.metadata or {}
-			
-			# Add context hints for better ranking
-			if metadata.get("language"):
-				enhanced_query += f" language:{metadata['language']}"
-			if metadata.get("is_test"):
-				enhanced_query += " test"
-			if metadata.get("module_name"):
-				enhanced_query += f" module:{metadata['module_name']}"
-			
-			pairs.append((enhanced_query, doc.page_content))
-		
-		# Get reranking scores
-		scores = ce.predict(pairs)
-		
-		# Apply additional scoring factors
-		enhanced_scores = []
-		for i, (doc, score) in enumerate(zip(docs, scores)):
-			final_score = float(score)
-			metadata = doc.metadata or {}
-			
-			# Boost scores for certain file types based on query context
-			if "test" in query.lower() and metadata.get("is_test"):
-				final_score += 0.1
-			if "config" in query.lower() and metadata.get("is_config"):
-				final_score += 0.1
-			if metadata.get("language") and metadata["language"] in query.lower():
-				final_score += 0.05
-			
-			enhanced_scores.append((doc, final_score))
-		
-		# Sort by enhanced scores
-		ranked = sorted(enhanced_scores, key=lambda x: x[1], reverse=True)
-		return [doc for doc, _ in ranked[:top_k]]
-		
-	except Exception as e:
-		logger.warning(f"Cross-encoder reranking failed: {e}")
-		return docs[:top_k]
+	# Choose reranking strategy based on configuration and performance needs
+	rerank_strategy = getattr(cfg.retrieval, 'rerank_strategy', 'lightweight')
+	
+	if rerank_strategy == 'openai_llm':
+		# Use OpenAI LLM for high-quality reranking (slower, more expensive)
+		return openai_rerank_documents(docs, query, top_k, cfg)
+	
+	elif rerank_strategy == 'openai_embedding':
+		# Use OpenAI embeddings for similarity-based reranking (fast, accurate)
+		return embedding_similarity_rerank(docs, query, top_k, cfg)
+	
+	else:  # 'lightweight' or fallback
+		# Use fast heuristic-based reranking (fastest, good enough)
+		return lightweight_rerank(docs, query, top_k)
+
+
+# Legacy function for backward compatibility (now redirects to smart_rerank)
+def apply_cross_encoder_rerank(docs: List[Document], query: str, top_k: int, cfg: AppConfig) -> List[Document]:
+	"""Legacy cross-encoder function - now uses smart reranking"""
+	logger.info("Using smart reranking instead of cross-encoder (dependency removed)")
+	return smart_rerank(docs, query, top_k, cfg)
 
 
 def create_context_summary(docs: List[Document]) -> Dict[str, Any]:

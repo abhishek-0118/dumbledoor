@@ -28,6 +28,13 @@ class IndexingConfig(BaseModel):
 	batch_size: int
 	github_token_env: Optional[str] = None
 	github_auth_required: bool = False
+	enable_incremental: bool = False
+	parallelism: int = 1
+	cache_embeddings: bool = False
+	compression_enabled: bool = False
+	max_retries: int = 3
+	timeout: int = 30
+	force_reindex: bool = True
 
 class RetrievalConfig(BaseModel):
 	top_k: int
@@ -36,8 +43,11 @@ class RetrievalConfig(BaseModel):
 	cross_encoder_model: str
 	similarity_threshold: float = 0.5
 	max_context_docs: int = 30
+	max_context_tokens: int = 4000
 	include_file_context: bool = True
 	boost_same_language: bool = True
+	enable_caching: bool = False
+	cache_ttl: int = 300
 
 class ServerConfig(BaseModel):
 	host: str
@@ -51,6 +61,15 @@ class ChatConfig(BaseModel):
 	max_tokens: Optional[int] = None
 	additional_kwargs: Optional[dict] = None
 
+class LoggingConfig(BaseModel):
+	level: str = "INFO"
+	file: str = "./logs/app.log"
+	enable_cost_tracking: bool = False
+	cost_log_file: str = "./logs/cost_history.log"
+	log_token_usage: bool = False
+	max_log_size: str = "10MB"
+	backup_count: int = 5
+
 class AppConfig(BaseModel):
 	embedding: EmbeddingConfig
 	backend: BackendConfig
@@ -60,3 +79,4 @@ class AppConfig(BaseModel):
 	chat: ChatConfig
 	current_method: str  # "gemini", "openai"
 	app_env: str
+	logging: Optional[LoggingConfig] = None
