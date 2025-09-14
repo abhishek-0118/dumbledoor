@@ -16,6 +16,7 @@ indexing:
   local_repo_root: ./repos
   repo_urls:
     - 'https://github.com/Orange-Health/citadel.git'
+    - 'https://github.com/Orange-Health/oms.git'
   include_globs: ["**/*"]
   exclude_globs: ["**/.git/**","**/.github/**","**/node_modules/**","**/dist/**","**/build/**","**/*.min.js","**/*.png","**/*.jpg","**/*.jpeg","**/*.pdf","**/__pycache__/**","**/venv/**","**/.venv/**","**/target/**","**/bin/**","**/.DS_Store","**/Thumbs.db"]
   max_file_mb: 1.5
