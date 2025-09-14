@@ -131,6 +131,64 @@ class RepoIndexer:
 		
 		return self.splitter.split_documents(docs)
 
+	def _add_documents_smart_batch(self, documents: List[Document]):
+		"""Smart batch processing with automatic size adjustment"""
+		if not documents:
+			return
+		
+		initial_batch_size = self.cfg.indexing.batch_size
+		current_batch_size = initial_batch_size
+		
+		total_docs = len(documents)
+		processed = 0
+		
+		logger.info(f"Processing {total_docs} documents in batches")
+		
+		for i in range(0, total_docs, current_batch_size):
+			batch = documents[i:i + current_batch_size]
+			
+			try:
+				self.store.add_documents(batch)
+				processed += len(batch)
+				logger.info(f"Successfully processed batch {i//current_batch_size + 1}: {processed}/{total_docs} documents")
+				
+			except Exception as e:
+				error_msg = str(e).lower()
+				
+				# Handle batch size limit errors
+				if "batch size" in error_msg and "greater than" in error_msg:
+					# Extract max batch size from error message
+					import re
+					match = re.search(r'max batch size of (\d+)', str(e))
+					if match:
+						max_allowed = int(match.group(1))
+						current_batch_size = max_allowed - 100  # Safety margin
+						logger.warning(f"Reduced batch size to {current_batch_size} due to limit: {e}")
+						
+						# Retry this batch with smaller size
+						for j in range(i, min(i + initial_batch_size, total_docs), current_batch_size):
+							smaller_batch = documents[j:j + current_batch_size]
+							self.store.add_documents(smaller_batch)
+							processed += len(smaller_batch)
+							logger.info(f"Processed smaller batch: {processed}/{total_docs} documents")
+					else:
+						# Fallback: halve the batch size
+						current_batch_size = max(current_batch_size // 2, 100)
+						logger.warning(f"Halving batch size to {current_batch_size}: {e}")
+						
+						# Retry with smaller batches
+						for j in range(i, min(i + initial_batch_size, total_docs), current_batch_size):
+							smaller_batch = documents[j:j + current_batch_size]
+							self.store.add_documents(smaller_batch)
+							processed += len(smaller_batch)
+							logger.info(f"Processed smaller batch: {processed}/{total_docs} documents")
+				else:
+					# Other errors - log and continue
+					logger.error(f"Failed to process batch {i//current_batch_size + 1}: {e}")
+					raise
+		
+		logger.info(f"Completed processing {processed} documents")
+
 	def _detect_language(self, file_type: str) -> str:
 		"""Detect programming language from file extension"""
 		return LANGUAGE_MAP.get(file_type.lower(), 'text')

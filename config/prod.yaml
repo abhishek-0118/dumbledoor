@@ -22,7 +22,7 @@ indexing:
   max_file_mb: 1.5
   chunk_size: 1000  # Smaller chunks for large scale
   chunk_overlap: 100
-  batch_size: 6000  # Larger batches for production
+  batch_size: 5000  # Safe batch size under Chroma's 5461 limit
   github_token_env: GITHUB_TOKEN
   github_auth_required: true
   enable_incremental: true

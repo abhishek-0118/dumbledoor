@@ -21,7 +21,7 @@ indexing:
   max_file_mb: 2.0
   chunk_size: 1200  # Optimized for 100+ repos
   chunk_overlap: 150
-  batch_size: 4000  # Increased for faster processing
+  batch_size: 4000  # Safe batch size for local development
   github_token_env: GITHUB_TOKEN
   github_auth_required: false
   max_retries: 3
