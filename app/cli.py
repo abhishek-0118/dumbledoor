@@ -125,22 +125,19 @@ def main():
 
 	if args.test_search:
 		try:
-			from .search.retrieval import enhanced_search, create_context_summary
-			logger.info(f"Testing search with query: '{args.test_search}'")
+			from .search.retrieval import perform_rag_search
+			logger.info(f"Testing RAG search with query: '{args.test_search}'")
 			
-			docs = enhanced_search(idx.store, args.test_search, cfg, k=10)
-			context_summary = create_context_summary(docs)
+			rag_result = perform_rag_search(idx.store, args.test_search, cfg, k=10)
 			
-			logger.info(f"Found {len(docs)} relevant documents")
-			logger.info(f"Context summary: {context_summary}")
+			logger.info(f"Found {len(rag_result['sources'])} relevant documents")
+			logger.info(f"Context summary: {rag_result['summary']}")
 			
-			for i, doc in enumerate(docs[:5]):
-				metadata = doc.metadata or {}
+			for i, source in enumerate(rag_result['sources'][:5]):
 				logger.info(f"\n--- Result {i+1} ---")
-				logger.info(f"File: {metadata.get('repo', 'unknown')}/{metadata.get('path', 'unknown')}")
-				logger.info(f"Language: {metadata.get('language', 'unknown')}")
-				logger.info(f"Module: {metadata.get('module_name', 'N/A')}")
-				logger.info(f"Preview: {doc.page_content[:200]}...")
+				logger.info(f"File: {source.get('repo', 'unknown')}/{source.get('path', 'unknown')}")
+				logger.info(f"Language: {source.get('language', 'unknown')}")
+				logger.info(f"Preview: {source.get('preview', 'N/A')}")
 			
 			return 0
 		except Exception as e:

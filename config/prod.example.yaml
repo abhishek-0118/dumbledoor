@@ -1,0 +1,123 @@
+embedding:
+  model_name: text-embedding-3-large  
+  normalize: true
+  min_dimension: 3072
+  api_provider: openai
+  model_dimension: 3072  
+  api_key_env: OPENAI_API_KEY
+  encode_kwargs:
+    normalize_embeddings: true
+    batch_size: 32  
+    dimensions: 3072  
+
+backend:
+  chroma_dir: ./.chroma
+  collection_name: code_index
+
+indexing:
+  local_repo_root: ./repos
+  repo_urls:
+    - 'https://github.com/Orange-Health/citadel.git'
+    - 'https://github.com/Orange-Health/oms.git'
+    - 'https://github.com/Orange-Health/cds.git'
+    - 'https://github.com/Orange-Health/dokumentor.git'
+  include_globs: ["**/*"]
+  exclude_globs: ["**/.git/**","**/.github/**","**/node_modules/**","**/dist/**","**/build/**","**/*.min.js","**/*.png","**/*.jpg","**/*.jpeg","**/*.pdf","**/__pycache__/**","**/venv/**","**/.venv/**","**/target/**","**/bin/**","**/.DS_Store","**/Thumbs.db"]
+  max_file_mb: 1.5
+  chunk_size: 1500  
+  chunk_overlap: 200  
+  batch_size: 5000  # Safe batch size under Chroma's 5461 limit
+  github_token_env: GITHUB_TOKEN
+  github_auth_required: true
+  enable_incremental: true
+  parallelism: 6
+  cache_embeddings: true
+  compression_enabled: true
+
+retrieval:
+  top_k: 25  
+  alpha_hybrid: 0.3
+  similarity_threshold: 0.15  
+  
+  # Reranking 
+  use_reranker: true
+  rerank_strategy: embedding_similarity  
+  cross_encoder_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  
+  # Context management 
+  max_context_docs: 25  
+  max_context_tokens: 4000  # Much higher context limit
+  include_file_context: true
+  boost_same_language: true
+  
+  # Production optimizations
+  enable_caching: true
+  cache_ttl: 1200  # 20 minutes cache for production
+  
+  # Advanced features
+  adaptive_search: true
+  diversity_penalty: 0.15  # Higher penalty to reduce duplication
+  temporal_boost: false  # Disabled for production stability
+
+server:
+  host: 0.0.0.0
+  port: 8001
+
+# Production Chat Configuration - Quality Optimized
+chat:
+  provider: openai
+  model: gpt-4o  
+  temperature: 0.1
+  api_key_env: OPENAI_API_KEY
+  max_tokens: 1500  
+  
+  # Production settings
+  additional_kwargs:
+    presence_penalty: 0.0
+    frequency_penalty: 0.0
+    top_p: 0.9
+    
+  # Rate limiting and optimization
+  enable_streaming: true
+  adaptive_tokens: true
+  timeout: 30  # Request timeout in seconds
+
+current_method: openai
+app_env: prod
+
+# Alternative Gemini configuration (uncomment to use):
+# chat:
+#   provider: gemini
+#   model: gemini-1.5-flash
+#   temperature: 0.1
+#   api_key_env: GEMINI_API_KEY
+#   max_tokens: 4096
+# current_method: gemini
+
+# Production Logging Configuration - Performance Monitoring
+logging:
+  level: WARNING  # Reduced logging for production performance
+  file: ./logs/app.log
+  
+  # Cost tracking - essential for production
+  enable_cost_tracking: true
+  cost_log_file: ./logs/cost_history.log
+  log_token_usage: true
+  
+  # Performance monitoring
+  log_query_performance: true
+  log_retrieval_metrics: true
+  log_response_quality: false  # Disabled to reduce noise
+  
+  # Production log management
+  max_log_size: 100MB  # Larger logs for production
+  backup_count: 20     # Keep more history
+  
+  # Security and monitoring
+  log_security_events: true
+  log_rate_limiting: true
+  
+  # Format optimized for log aggregation
+  format: json
+  include_context: false  # Reduce log size
+  include_user_data: false  # Privacy compliance

@@ -1,12 +1,15 @@
+# Enhanced Embedding Configuration - 1024 Dimensions Only
 embedding:
-  model_name: text-embedding-3-large
+  model_name: text-embedding-3-large  # Use large model but truncate to 1024
   normalize: true
   min_dimension: 1024
   api_provider: openai
-  model_dimension: 1024
+  model_dimension: 1024  # Force 1024 dimensions to match existing collection
   api_key_env: OPENAI_API_KEY
   encode_kwargs:
     normalize_embeddings: true
+    batch_size: 32  # Optimal batch size for embeddings
+    dimensions: 1024  # Explicitly set OpenAI API dimensions parameter
 
 backend:
   chroma_dir: ./.chroma
@@ -31,29 +34,54 @@ indexing:
   parallelism: 4
   cache_embeddings: true
 
+# Enhanced Retrieval Configuration  
 retrieval:
-  top_k: 10  # Increased for better coverage
-  alpha_hybrid: 0.3
+  # Search parameters
+  top_k: 15  # Optimal balance between relevance and performance
+  alpha_hybrid: 0.3  # Hybrid search weighting (0.0 = pure semantic, 1.0 = pure keyword)
+  similarity_threshold: 0.25  # Lower threshold for broader results
+  
+  # Reranking configuration
   use_reranker: true
+  rerank_strategy: lightweight  # Options: lightweight, openai_embedding, openai_llm
   cross_encoder_model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  similarity_threshold: 0.3  # Lower threshold for more results
-  max_context_docs: 12
-  max_context_tokens: 800  # Aggressive limit for cost optimization
+  
+  # Context management
+  max_context_docs: 15
+  max_context_tokens: 1200  # Balanced for quality vs cost
   include_file_context: true
   boost_same_language: true
+  
+  # Performance optimization
   enable_caching: true
-  cache_ttl: 300
+  cache_ttl: 600  # 10 minutes cache
+  
+  # Advanced features
+  adaptive_search: true  # Use query analysis for adaptive retrieval
+  diversity_penalty: 0.1  # Penalty for duplicate content
+  temporal_boost: true   # Boost recently modified files
 
 server:
   host: 0.0.0.0
   port: 8000
 
+# Enhanced Chat Configuration
 chat:
   provider: openai
-  model: gpt-4
-  temperature: 0.1
+  model: gpt-4o-mini  # More cost-effective than gpt-4
+  temperature: 0.1  # Low temperature for consistent technical responses
   api_key_env: OPENAI_API_KEY
-  max_tokens: 800  # Reduced for cost optimization
+  max_tokens: 1000  # Balanced for comprehensive answers
+  
+  # Advanced parameters
+  additional_kwargs:
+    presence_penalty: 0.0
+    frequency_penalty: 0.0
+    top_p: 0.95
+    
+  # Cost optimization
+  enable_streaming: true
+  adaptive_tokens: true  # Adjust max_tokens based on query complexity
 
 current_method: openai
 app_env: local
@@ -67,9 +95,29 @@ app_env: local
 #   max_tokens: 4096
 # current_method: gemini
 
+# Enhanced Logging Configuration
 logging:
   level: INFO
   file: ./logs/app.log
+  
+  # Cost tracking
   enable_cost_tracking: true
   cost_log_file: ./logs/cost_history.log
   log_token_usage: true
+  
+  # Performance monitoring
+  log_query_performance: true
+  log_retrieval_metrics: true
+  log_response_quality: true
+  
+  # Log rotation
+  max_log_size: 50MB
+  backup_count: 10
+  
+  # Debug settings (set to DEBUG for development)
+  query_debug: false
+  embedding_debug: false
+  
+  # Structured logging
+  format: json  # json or text
+  include_context: true

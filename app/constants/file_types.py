@@ -52,7 +52,3 @@ CONFIG_FILE_INDICATORS = [
     'requirements.txt', 'go.mod', 'cargo.toml'
 ]
 
-# Language keywords for syntax highlighting
-PROGRAMMING_LANGUAGES = [
-    'python', 'go', 'javascript', 'typescript', 'java', 'rust', 'cpp', 'c'
-]

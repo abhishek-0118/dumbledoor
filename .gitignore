@@ -1,6 +1,7 @@
 .env
 ./.env
 .env.local
+oauth-client.json
 lc_starter_lit.py
 lc_starter_lit_2.py
 .chroma

@@ -49,12 +49,15 @@ def _create_openai_embeddings(cfg: EmbeddingConfig, encode_kwargs: dict) -> Tupl
 		
 		logger.info(f"Creating OpenAI embeddings with model: {cfg.model_name}")
 		
-		# For text-embedding-3-large, we can specify dimensions
-		if cfg.model_name == "text-embedding-3-large" and cfg.model_dimension and cfg.model_dimension <= 3072:
+		# For OpenAI embedding models that support dimensions parameter
+		if cfg.model_name in ["text-embedding-3-large", "text-embedding-3-small"] and cfg.model_dimension:
+			# Set dimensions explicitly to avoid dimension mismatch
+			dimensions = min(cfg.model_dimension, MAX_DIMENSION_LIMIT)
+			logger.info(f"Setting OpenAI embedding dimensions to: {dimensions}")
 			emb = OpenAIEmbeddings(
 				model=cfg.model_name,
 				openai_api_key=api_key,
-				dimensions=min(cfg.model_dimension, MAX_DIMENSION_LIMIT),
+				dimensions=dimensions,
 			)
 		else:
 			emb = OpenAIEmbeddings(

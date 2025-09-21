@@ -1,89 +1,123 @@
-"""Prompt templates and messaging constants"""
+"""Simplified and dynamic prompt templates"""
 
-# Base code-aware prompt template
-BASE_CODE_PROMPT_TEMPLATE = """You are a software engineer. Use the code context to answer the question accurately.
+# Main dynamic prompt template
+DYNAMIC_CODE_PROMPT_TEMPLATE = """You are an expert software engineer and technical documentation specialist with deep understanding of complex systems.
 
-Context:
+## Context from Codebase:
 {context}
 
-Question: {question}
+## User Question:
+{question}
 
-Instructions:
-- Answer based on the actual code provided
-- Use clear markdown formatting with code blocks
-- Reference specific files and functions
-- Keep response focused and practical
+## Instructions:
+1. **Analyze the context thoroughly** - Look for patterns, connections, and relevant information across all provided code sections
+2. **Provide comprehensive, insightful explanations** - Connect different parts of the code to give complete understanding
+3. **Use actual code snippets** from the context to illustrate your points with precise explanations
+4. **Create clear, well-formatted responses** using proper markdown syntax with detailed structure
+5. **Add ASCII diagrams** when they help explain architecture, data flow, processes, or relationships
+6. **Be thorough in your analysis** - Even if information seems scattered, piece together the full picture from available context
+7. **Focus on practical understanding** - Explain not just what the code does, but how it fits into the larger system
 
-"""
+## Response Format:
+- Use **clear headings** (##, ###) to organize complex topics
+- Use `code blocks` code snippets
+- Use ``technical terms`` for function names, variables, file paths etc.
+- Use bullet points and numbered lists for processes and multiple items
+- Create ASCII diagrams for complex concepts:
+  ```
+  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+  │  Component  │───▶│   Process   │───▶│   Result    │
+  └─────────────┘    └─────────────┘    └─────────────┘
+  ```
+- Include relevant file paths and function signatures
+- Show relationships between different code sections
 
-# Enhanced prompt templates for different query types
-ENHANCED_PROMPT_TEMPLATES = {
-    "how_to": "Please provide step-by-step instructions with code examples.",
-    "what_is": "Please provide a clear explanation with examples from the codebase.",
-    "debugging": "Please analyze the code for potential issues and suggest fixes.",
-    "implementation": "Please provide implementation details with relevant code patterns from the codebase.",
-    "architectural": "Please provide an architectural overview showing how components interact.",
-    "detailed": "Please provide a comprehensive answer with code examples and explanations.",
-    "code_related": "- Focus on code structure and functions\n",
-    "test_related": "- Pay attention to test files and patterns\n",
-    "config_related": "- Focus on configuration and settings\n",
-}
+## Response Guidelines:
+- **Be thorough**: Extract maximum insight from the provided context
+- **Be analytical**: Explain the reasoning behind code design and implementation choices
+- **Be comprehensive**: Cover all relevant aspects found in the context, connecting related pieces
+- **Be practical**: Focus on real-world usage, implementation details, and system behavior
+- **Be clear**: Use examples and step-by-step explanations
+- **Create diagrams**: Visual representations help understand complex systems and flows
 
-# Cross-repo architectural ranking prompt
-ARCHITECTURAL_RANKING_PROMPT = """You are ranking code snippets that best answer the user's query, prioritizing FUNCTION definitions, calls, and architectural patterns.
-Query: {query}
-Snippets (index: [repo_name] content preview):
-{items}
+## Special Focus Areas:
+- **System Architecture**: How components interact and fit together
+- **Data Flow**: How information moves through the system
+- **Business Logic**: The underlying processes and rules
+- **Integration Points**: How different services or modules connect
+- **Error Handling**: How the system deals with edge cases
+- **Configuration**: How the system is configured and customized
 
-Consider cross-repo relationships and architectural flow when ranking. Return a JSON list of the top indices in order of relevance (e.g., [3,1,0])."""
+Provide a detailed, insightful analysis based on the codebase context."""
 
-# Fallback messages
 FALLBACK_MESSAGES = {
-    "no_results": """## No Results Found
+    "no_results": """##  No Relevant Information Found
 
-I couldn't find relevant information in the codebase to answer your question.
+I couldn't find information in the indexed codebase that matches your query.
 
-**Suggestions:**
-- Try rephrasing your question
-- Use more specific terms
-- Check if the code you're looking for exists in the indexed repositories""",
-    
-    "search_results_header": "## Search Results\n\nBased on the codebase analysis, I found relevant information but couldn't generate a complete AI response.\n\n",
-    
-    "next_steps": """### Next Steps
+### 🔧 Suggestions:
+1. **Try broader search terms** - Use more general keywords
+2. **Check spelling** - Ensure technical terms are spelled correctly  
+3. **Use different terminology** - Try synonyms or related concepts
+4. **Be more specific** - Add context about the type of code or functionality you're looking for
 
-- Review the files mentioned above for detailed implementation
-- Try rephrasing your question for better AI analysis
-- Ask more specific questions about particular functions or modules""",
-    
-    "stream_error": "I couldn't generate a proper response. Please try rephrasing your question."
-}
-
-# Context enhancement templates
-CONTEXT_TEMPLATES = {
-    "file_header": """FILE: {rel_path}
-REPOSITORY: {repo_name}
-LANGUAGE: {language}
-PATH: {rel_path}
-
+### Tips for Better Results:
+- Ask about specific **functions**, **classes**, or **modules**
+- Mention the **programming language** or **framework**
+- Describe what you're trying to **accomplish** or **understand**
 """,
-    "structure_header": "STRUCTURE:\n{structure_info}\n\n"
+    
+    "error": """##  Search Error
+
+I encountered an issue while searching the codebase. Please try:
+
+1. **Rephrasing your question** with different keywords
+2. **Breaking down complex queries** into smaller, specific questions  
+3. **Being more specific** about what you're looking for
+
+If the issue persists, there may be a technical problem with the search system."""
 }
 
-# Query analysis instructions
-QUERY_ANALYSIS_PROMPTS = {
-    "context_with_languages": "Context: Looking at code in {languages} from {total_documents} files",
-    "language_boost": " language:{language}",
-    "test_boost": " test",
-    "module_boost": " module:{module_name}"
-}
+# ASCII diagram templates removed - were unused dead code
 
-# Stream response templates
-STREAM_MESSAGES = {
-    "starting": "Initializing search and analysis...",
-    "analyzing": "Analyzing query and preparing search...",
-    "searching": "Searching through codebase...",
-    "generating": "Generating comprehensive answer...",
-    "completed": "Answer generation completed successfully",
-    "error": "An error occurred: {error}"
-}
+# Dynamic context enhancement
+def create_dynamic_context(repositories: list, languages: list, total_docs: int) -> str:
+    """Create dynamic context information based on search results"""
+    context_info = []
+    
+    if repositories:
+        if len(repositories) == 1:
+            context_info.append(f"**Repository**: {repositories[0]}")
+        else:
+            context_info.append(f"**Repositories**: {', '.join(repositories)}")
+    
+    if languages:
+        if len(languages) == 1:
+            context_info.append(f"**Language**: {languages[0]}")
+        else:
+            context_info.append(f"**Languages**: {', '.join(languages)}")
+    
+    if total_docs > 0:
+        context_info.append(f"**Documents analyzed**: {total_docs}")
+    
+    if context_info:
+        return "\n\n---\n\n### 📊 Context Information\n\n" + "\n".join(f"- {info}" for info in context_info)
+    
+    return ""
+
+# Dynamic prompt creation
+def create_dynamic_prompt(context: str, question: str, context_summary: dict = None) -> str:
+    """Create a dynamic prompt with context-aware enhancements"""
+    base_prompt = DYNAMIC_CODE_PROMPT_TEMPLATE.format(context=context, question=question)
+    
+    # Add dynamic context information if available
+    if context_summary:
+        repos = context_summary.get("repositories", [])
+        languages = context_summary.get("languages", [])
+        total_docs = context_summary.get("total_documents", 0)
+        
+        dynamic_context = create_dynamic_context(repos, languages, total_docs)
+        if dynamic_context:
+            base_prompt += dynamic_context
+    
+    return base_prompt

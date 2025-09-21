@@ -7,6 +7,7 @@ from ..constants import (
     MODEL_COSTS, DEFAULT_MODEL_COSTS, EMBEDDING_COSTS, DEFAULT_EMBEDDING_COSTS,
     TOKENIZER_MODELS, DEFAULT_ENV_VARS, DEFAULT_VALUES
 )
+from ..constants.system import EMBEDDING_CONFIG, ENV_VARS, TOKEN_CONFIG
 
 logger = logging.getLogger("app.core.chat")
 
@@ -42,8 +43,8 @@ def _create_gemini_chat(chat_config: ChatConfig) -> Any:
         # Fallback to common environment variables
         if not api_key:
             api_key = (
-                os.getenv("GEMINI_API_KEY")
-                or os.getenv("GOOGLE_API_KEY")
+                os.getenv(ENV_VARS["GEMINI_KEY"])
+                or os.getenv(ENV_VARS["GOOGLE_KEY"])
                 or os.getenv("GOOGLE_GENAI_API_KEY")
             )
         
@@ -87,7 +88,7 @@ def _create_openai_chat(chat_config: ChatConfig) -> Any:
         
         # Fallback to common environment variables
         if not api_key:
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = os.getenv(ENV_VARS["OPENAI_KEY"])
         
         if not api_key:
             raise ValueError(f"OpenAI API key not found. Set {chat_config.api_key_env} or OPENAI_API_KEY environment variable.")
@@ -128,14 +129,14 @@ def estimate_token_cost(text: str, model: str, provider: str) -> dict:
             elif "gpt-3.5" in model.lower():
                 encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
             else:
-                # Default to cl100k_base for most OpenAI models
-                encoding = tiktoken.get_encoding("cl100k_base")
+                # Default encoding for most OpenAI models
+                encoding = tiktoken.get_encoding(TOKEN_CONFIG["TOKENIZER_MODELS"]["default"])
         elif provider.lower() == "gemini":
             # Gemini uses similar tokenization to OpenAI for estimation
-            encoding = tiktoken.get_encoding("cl100k_base")
+            encoding = tiktoken.get_encoding(TOKEN_CONFIG["TOKENIZER_MODELS"]["default"])
         else:
             # Fallback encoding
-            encoding = tiktoken.get_encoding("cl100k_base")
+            encoding = tiktoken.get_encoding(TOKEN_CONFIG["TOKENIZER_MODELS"]["default"])
         
         tokens = encoding.encode(text)
         token_count = len(tokens)
@@ -155,7 +156,7 @@ def estimate_token_cost(text: str, model: str, provider: str) -> dict:
     except Exception as e:
         logger.warning(f"Failed to estimate token cost: {e}")
         return {
-            "token_count": len(text.split()) * 1.3,  # Rough estimation
+            "token_count": len(text.split()) * TOKEN_CONFIG["WORD_TO_TOKEN_RATIO"],  # Rough estimation
             "estimated_cost_usd": 0.0,
             "cost_per_1k_tokens": 0.0,
             "model": model,
@@ -238,7 +239,7 @@ def estimate_embeddings_cost(text: str, provider: str, model: str) -> dict:
     except Exception as e:
         logger.warning(f"Failed to estimate embedding cost: {e}")
         return {
-            "token_count": len(text.split()) * 1.3,  # Rough estimation
+            "token_count": len(text.split()) * TOKEN_CONFIG["WORD_TO_TOKEN_RATIO"],  # Rough estimation
             "estimated_cost_usd": 0.0,
             "cost_per_1k_tokens": 0.0,
             "model": model,

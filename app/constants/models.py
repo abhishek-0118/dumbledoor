@@ -1,25 +1,6 @@
 """Model configurations, costs, and dimensions"""
 
-# Common embedding dimensions (for reference only)
-# Actual dimensions should be configured in config files
-COMMON_EMBEDDING_DIMENSIONS = {
-    "text-embedding-3-large": 3072,  # Full dimension (we cap at 1024)
-    "text-embedding-3-small": 1536,
-    "text-embedding-ada-002": 1536,
-    "models/embedding-001": 768,
-    "models/text-embedding-004": 768,
-}
-
-# Token limits for different models
-MODEL_TOKEN_LIMITS = {
-    "gpt-4": 8192,
-    "gpt-4-turbo": 128000,
-    "gpt-3.5-turbo": 4096,
-    "gpt-3.5-turbo-16k": 16384,
-    "gemini-1.5-flash": 1048576,
-    "gemini-1.5-pro": 2097152,
-    "gemini-pro": 32768,
-}
+# Dead code removed: COMMON_EMBEDDING_DIMENSIONS and MODEL_TOKEN_LIMITS were unused
 
 # Cost per 1K tokens for chat models (USD)
 MODEL_COSTS = {
@@ -67,19 +48,7 @@ DEFAULT_EMBEDDING_COSTS = {
     "huggingface": 0.0
 }
 
-# Note: Fallback embedding models removed as we only support OpenAI and Google providers
-
-# Model aliases for easier configuration
-MODEL_ALIASES = {
-    "gpt4": "gpt-4",
-    "gpt4-turbo": "gpt-4-turbo",
-    "gpt35": "gpt-3.5-turbo",
-    "flash": "gemini-1.5-flash",
-    "pro": "gemini-1.5-pro",
-}
-
-# Supported providers
-SUPPORTED_PROVIDERS = ["openai", "gemini", "google"]
+# Dead code removed: MODEL_ALIASES and SUPPORTED_PROVIDERS were unused
 
 # Maximum dimension limit for optimization
 MAX_DIMENSION_LIMIT = 1024

@@ -13,10 +13,20 @@ from ..db.vectorstores import create_vectorstore
 from ..repos.github import clone_or_pull
 from ..constants import (
     CODE_EXTENSIONS, LANGUAGE_MAP, TEST_FILE_INDICATORS, CONFIG_FILE_INDICATORS,
-    TEXT_SPLITTER_SEPARATORS, CONTEXT_TEMPLATES
+    TEXT_SPLITTER_SEPARATORS
 )
 
 logger = logging.getLogger("app.indexing.indexer")
+
+# Simple templates for document context (moved from removed CONTEXT_TEMPLATES)
+FILE_HEADER_TEMPLATE = """FILE: {rel_path}
+REPOSITORY: {repo_name}
+LANGUAGE: {language}
+PATH: {rel_path}
+
+"""
+
+STRUCTURE_HEADER_TEMPLATE = "STRUCTURE:\n{structure_info}\n\n"
 
 
 def _should_index(path: Path, includes: List[str], excludes: List[str], max_mb: float) -> bool:
@@ -232,7 +242,7 @@ class RepoIndexer:
 		"""Create enhanced content with additional context for better understanding"""
 		
 		# Add file header with context
-		header = CONTEXT_TEMPLATES["file_header"].format(
+		header = FILE_HEADER_TEMPLATE.format(
 			rel_path=rel_path,
 			repo_name=repo_name,
 			language=self._detect_language(file_path.suffix)
@@ -248,7 +258,7 @@ class RepoIndexer:
 			structure_info = ""
 		
 		if structure_info:
-			header += CONTEXT_TEMPLATES["structure_header"].format(structure_info=structure_info)
+			header += STRUCTURE_HEADER_TEMPLATE.format(structure_info=structure_info)
 		
 		return header + text
 

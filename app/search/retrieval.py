@@ -1,151 +1,119 @@
 import logging
-import os
 from typing import Optional, List, Dict, Any
 from langchain.schema import Document
 from ..config.models import AppConfig
-from .fast_retrieval import create_fast_retriever
-from .openai_reranker import openai_rerank_documents, embedding_similarity_rerank, lightweight_rerank
+from .openai_reranker import embedding_similarity_rerank
+from ..constants.system import SEARCH_CONFIG
 
 logger = logging.getLogger("app.search.retrieval")
 
 
-def build_retriever(store, cfg: AppConfig, repo_prefix: Optional[str], k: int, alpha: float):
-	# Increase search_k to get more candidates for reranking
-	search_k = max(k * 3, 20)  # Get 3x more candidates or at least 20
-	search_kwargs = {"k": search_k}
+def build_retriever(store, repo_prefix: Optional[str] = None, k: int = 12):
+	"""Build a simple retriever with optional repository filtering"""
+	search_kwargs = {"k": k}
 	
 	if repo_prefix:
 		search_kwargs["filter"] = {
 			"$or": [
-				{"repo": {"$like": f"{repo_prefix}%"}},
-				{"repo_name": {"$like": f"{repo_prefix}%"}},
-				{"repo_folder": {"$like": f"{repo_prefix}%"}},
+				{"repo": {"$eq": repo_prefix}},
+				{"repo_name": {"$eq": repo_prefix}},
+				{"repo_folder": {"$eq": repo_prefix}},
 			]
 		}
 	
-	vector_ret = store.as_retriever(search_kwargs=search_kwargs)
-	return vector_ret
+	return store.as_retriever(search_kwargs=search_kwargs)
 
 
-def enhanced_search(store, query: str, cfg: AppConfig, repo_prefix: Optional[str] = None, 
-                   k: int = 12, include_related: bool = True) -> List[Document]:
-	"""Enhanced search with fast retrieval optimizations"""
-	
-	# Use fast retriever if caching is enabled
-	if getattr(cfg.retrieval, 'enable_caching', False):
-		fast_retriever = create_fast_retriever(store, cfg)
-		primary_docs = fast_retriever.retrieve(
-			query, repo_prefix, k, cfg.retrieval.alpha_hybrid
-		)
-	else:
-		retriever = build_retriever(store, cfg, repo_prefix, k, cfg.retrieval.alpha_hybrid)
-		primary_docs = retriever.get_relevant_documents(query)
-	
-	# Apply reranking only if not using fast retrieval (which has lightweight ranking)
-	if not getattr(cfg.retrieval, 'enable_caching', False):
-		reranked_docs = smart_rerank(primary_docs, query, k, cfg)
-	else:
-		reranked_docs = primary_docs[:k]
-	
-	if not include_related:
-		return reranked_docs
-	
-	# Find related documents from same files/modules
-	related_docs = find_related_context(store, reranked_docs, cfg, k // 3)
-	
-	# Combine and deduplicate
-	all_docs = reranked_docs + related_docs
-	seen_content = set()
-	unique_docs = []
-	
-	for doc in all_docs:
-		content_hash = hash(doc.page_content[:200])  # Use first 200 chars for deduplication
-		if content_hash not in seen_content:
-			seen_content.add(content_hash)
-			unique_docs.append(doc)
-	
-	return unique_docs[:k * 2]  # Return up to 2x the requested amount for better context
-
-
-def find_related_context(store, primary_docs: List[Document], cfg: AppConfig, max_related: int) -> List[Document]:
-	"""Find related context from the same files or modules as primary results"""
-	related_docs = []
-	
-	for doc in primary_docs[:5]:  # Only check top 5 primary docs
-		metadata = doc.metadata or {}
-		repo = metadata.get("repo", "")
-		path = metadata.get("path", "")
-		module_name = metadata.get("module_name", "")
+def rag_search(store, query: str, cfg: AppConfig, repo_prefix: Optional[str] = None, k: int = 25) -> List[Document]:
+	"""Comprehensive RAG search: Query -> Embeddings -> Broad Search -> Smart Rerank -> Return"""
+	try:
+		# Step 1: Cast a wide net - get many more candidates for comprehensive coverage
+		search_multiplier = 4  # Get 4x more candidates than final k
+		initial_candidates = k * search_multiplier
 		
-		if not path:
-			continue
+		retriever = build_retriever(store, repo_prefix, initial_candidates)
+		docs = retriever.invoke(query)
 		
-		# Search for documents from the same file
-		try:
-			file_filter = {
-				"$and": [
-					{"repo": {"$eq": repo}},
-					{"path": {"$eq": path}}
-				]
-			}
-			
-			file_docs = store.similarity_search(
-				doc.page_content,
-				k=3,
-				filter=file_filter
-			)
-			
-			# Add file context docs that aren't already in primary results
-			for file_doc in file_docs:
-				if file_doc.page_content != doc.page_content:
-					related_docs.append(file_doc)
-			
-		except Exception as e:
-			logger.debug(f"Failed to find related context for {path}: {e}")
-	
-	return related_docs[:max_related]
+		if not docs:
+			logger.warning(f"No documents found for query: {query[:50]}...")
+			return []
+		
+		logger.info(f"Retrieved {len(docs)} initial candidates for query: {query[:100]}")
+		
+		# Step 2: Apply multiple search strategies for comprehensive results
+		
+		# Strategy 1: Direct similarity search
+		primary_docs = docs[:initial_candidates // 2]
+		
+		# Strategy 2: Keyword-enhanced search (for queries like "trigger report generation")
+		query_terms = query.lower().split()
+		keyword_docs = []
+		
+		# Find documents that contain query keywords for better recall
+		for doc in docs:
+			content_lower = doc.page_content.lower()
+			keyword_matches = sum(1 for term in query_terms if term in content_lower)
+			if keyword_matches >= len(query_terms) // 2:  # At least half the keywords match
+				keyword_docs.append(doc)
+		
+		# Combine strategies
+		combined_docs = primary_docs + keyword_docs
+		
+		# Remove duplicates while preserving order
+		seen_content = set()
+		unique_docs = []
+		for doc in combined_docs:
+			content_hash = hash(doc.page_content[:200])  # Hash first 200 chars for dedup
+			if content_hash not in seen_content:
+				seen_content.add(content_hash)
+				unique_docs.append(doc)
+		
+		logger.info(f"After deduplication: {len(unique_docs)} unique candidates")
+		
+		# Step 3: Smart reranking with more lenient approach
+		if cfg.retrieval.use_reranker and len(unique_docs) > k:
+			reranked_docs = embedding_similarity_rerank(unique_docs, query, k, cfg)
+			logger.info(f"Reranked to top {len(reranked_docs)} documents")
+			return reranked_docs
+		else:
+			return unique_docs[:k]
+		
+	except Exception as e:
+		logger.error(f"RAG search failed: {e}")
+		return []
 
 
-def smart_rerank(docs: List[Document], query: str, top_k: int, cfg: AppConfig) -> List[Document]:
-	"""Smart reranking using the best available method"""
-	if not cfg.retrieval.use_reranker or not docs:
-		return docs[:top_k]
-	
-	# Choose reranking strategy based on configuration and performance needs
-	rerank_strategy = getattr(cfg.retrieval, 'rerank_strategy', 'lightweight')
-	
-	if rerank_strategy == 'openai_llm':
-		# Use OpenAI LLM for high-quality reranking (slower, more expensive)
-		return openai_rerank_documents(docs, query, top_k, cfg)
-	
-	elif rerank_strategy == 'openai_embedding':
-		# Use OpenAI embeddings for similarity-based reranking (fast, accurate)
-		return embedding_similarity_rerank(docs, query, top_k, cfg)
-	
-	else:  # 'lightweight' or fallback
-		# Use fast heuristic-based reranking (fastest, good enough)
-		return lightweight_rerank(docs, query, top_k)
-
-
-# Legacy function for backward compatibility (now redirects to smart_rerank)
-def apply_cross_encoder_rerank(docs: List[Document], query: str, top_k: int, cfg: AppConfig) -> List[Document]:
-	"""Legacy cross-encoder function - now uses smart reranking"""
-	logger.info("Using smart reranking instead of cross-encoder (dependency removed)")
-	return smart_rerank(docs, query, top_k, cfg)
-
-
-def create_context_summary(docs: List[Document]) -> Dict[str, Any]:
-	"""Create a summary of the retrieved context for better LLM understanding"""
+def create_context_from_documents(docs: List[Document]) -> str:
+	"""Create formatted context string from retrieved documents"""
 	if not docs:
-		return {}
+		return "No relevant information found in the codebase."
 	
-	# Analyze the retrieved documents
+	context_parts = []
+	for i, doc in enumerate(docs, 1):
+		metadata = doc.metadata or {}
+		repo = metadata.get("repo", "Unknown")
+		path = metadata.get("path", "Unknown")
+		language = metadata.get("language", "")
+		
+		header = f"\n--- Document {i} ---\n"
+		header += f"Repository: {repo}\n"
+		header += f"File: {path}\n"
+		if language:
+			header += f"Language: {language}\n"
+		header += "\n"
+		
+		context_parts.append(header + doc.page_content)
+	
+	return "\n".join(context_parts)
+
+
+def get_context_summary(docs: List[Document]) -> Dict[str, Any]:
+	"""Create simple summary of retrieved documents"""
+	if not docs:
+		return {"total_documents": 0, "repositories": [], "languages": []}
+	
 	repos = set()
 	languages = set()
-	file_types = set()
-	modules = set()
-	test_files = 0
-	config_files = 0
 	
 	for doc in docs:
 		metadata = doc.metadata or {}
@@ -153,22 +121,104 @@ def create_context_summary(docs: List[Document]) -> Dict[str, Any]:
 			repos.add(metadata["repo"])
 		if metadata.get("language"):
 			languages.add(metadata["language"])
-		if metadata.get("file_type"):
-			file_types.add(metadata["file_type"])
-		if metadata.get("module_name"):
-			modules.add(metadata["module_name"])
-		if metadata.get("is_test"):
-			test_files += 1
-		if metadata.get("is_config"):
-			config_files += 1
 	
 	return {
 		"total_documents": len(docs),
 		"repositories": list(repos),
-		"languages": list(languages),
-		"file_types": list(file_types),
-		"modules": list(modules)[:10],  # Limit to 10 modules
-		"test_files": test_files,
-		"config_files": config_files,
-		"has_diverse_context": len(file_types) > 1,
+		"languages": list(languages)
 	}
+
+
+# Legacy function for backward compatibility
+def apply_cross_encoder_rerank(docs: List[Document], query: str, top_k: int, cfg: AppConfig) -> List[Document]:
+	"""Legacy cross-encoder function - now uses embedding similarity rerank"""
+	logger.info("Using embedding similarity reranking (simplified)")
+	if cfg.retrieval.use_reranker:
+		return embedding_similarity_rerank(docs, query, top_k, cfg)
+	return docs[:top_k]
+
+
+# Legacy function - simplified for compatibility
+def create_context_summary(docs: List[Document]) -> Dict[str, Any]:
+	"""Create simple context summary for compatibility"""
+	return get_context_summary(docs)
+
+
+# Legacy function - redirects to new RAG search
+def enhanced_search(store, query: str, cfg: AppConfig, repo_prefix: Optional[str] = None, 
+                   k: int = 12, include_related: bool = True, query_analysis: Optional[Dict[str, Any]] = None) -> List[Document]:
+	"""Legacy enhanced search function - now uses simplified RAG search"""
+	logger.info("Using simplified RAG search (legacy enhanced_search)")
+	return rag_search(store, query, cfg, repo_prefix, k)
+
+
+# Main RAG interface function
+def perform_rag_search(store, query: str, cfg: AppConfig, repo_prefix: Optional[str] = None, k: int = 25) -> Dict[str, Any]:
+	"""Main RAG search function: Query -> Embeddings -> Comprehensive Search -> Response"""
+	try:
+		logger.info(f"Starting comprehensive RAG search for query: {query[:100]}...")
+		
+		# Perform comprehensive RAG search with multiple strategies
+		docs = rag_search(store, query, cfg, repo_prefix, k)
+		
+		# Be more permissive - try different search strategies if first attempt yields few results
+		if len(docs) < k // 2:
+			logger.info(f"Initial search yielded only {len(docs)} documents, trying broader search...")
+			
+			# Try with broader parameters and no repository filter
+			broader_docs = rag_search(store, query, cfg, None, k * 2)  # Remove repo filter, get more docs
+			
+			# Combine results
+			combined_docs = docs + broader_docs
+			
+			# Deduplicate
+			seen_content = set()
+			unique_docs = []
+			for doc in combined_docs:
+				content_hash = hash(doc.page_content[:200])
+				if content_hash not in seen_content:
+					seen_content.add(content_hash)
+					unique_docs.append(doc)
+			
+			docs = unique_docs[:k]
+			logger.info(f"Broader search yielded {len(docs)} documents total")
+		
+		if not docs:
+			logger.warning("No documents retrieved even with comprehensive search")
+			return {
+				"context": "I couldn't find specific information about this in the indexed codebase. This might be because the relevant code hasn't been indexed yet, or the query needs different keywords.",
+				"sources": [],
+				"summary": {"total_documents": 0, "repositories": [], "languages": []}
+			}
+		
+		# Create comprehensive context and summary
+		context = create_context_from_documents(docs)
+		summary = get_context_summary(docs)
+		
+		# Create detailed source info for frontend
+		sources = []
+		for doc in docs:
+			metadata = doc.metadata or {}
+			sources.append({
+				"repo": metadata.get("repo"),
+				"path": metadata.get("path"),
+				"language": metadata.get("language"),
+				"preview": doc.page_content[:400] + "..." if len(doc.page_content) > 400 else doc.page_content  # Longer preview
+			})
+		
+		logger.info(f"Comprehensive RAG search completed: {len(docs)} documents, {len(summary.get('repositories', []))} repositories")
+		
+		return {
+			"context": context,
+			"sources": sources,
+			"summary": summary
+		}
+		
+	except Exception as e:
+		logger.error(f"RAG search failed: {e}")
+		logger.exception("Full error details:")
+		return {
+			"context": "I encountered a technical issue while searching the codebase. Please try rephrasing your query or contact support if this persists.",
+			"sources": [],
+			"summary": {"total_documents": 0, "repositories": [], "languages": []}
+		}

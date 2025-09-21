@@ -53,32 +53,7 @@ SERVER_HEADERS = {
     "Content-Type": "text/event-stream"
 }
 
-# Default include/exclude patterns for indexing
-DEFAULT_INDEXING_PATTERNS = {
-    "include_globs": ["**/*"],
-    "exclude_globs": [
-        "**/.git/**",
-        "**/.github/**",
-        "**/node_modules/**",
-        "**/dist/**",
-        "**/build/**",
-        "**/*.min.js",
-        "**/*.png",
-        "**/*.jpg",
-        "**/*.jpeg",
-        "**/*.pdf",
-        "**/__pycache__/**",
-        "**/venv/**",
-        "**/env/**",
-        "**/.venv/**",
-        "**/target/**",
-        "**/bin/**",
-        "**/.DS_Store",
-        "**/Thumbs.db"
-    ]
-}
-
-# Text splitter separators (in order of preference)
+# Text splitter separators (in order of preference) - USED by indexer.py
 TEXT_SPLITTER_SEPARATORS = [
     "\n\n",      # Paragraph breaks
     "\nclass ",  # Class definitions
@@ -94,7 +69,7 @@ TEXT_SPLITTER_SEPARATORS = [
     ""
 ]
 
-# Default environment variable names
+# Default environment variable names - USED by chat.py
 DEFAULT_ENV_VARS = {
     "openai_key": "OPENAI_API_KEY",
     "gemini_key": "GEMINI_API_KEY",
@@ -104,38 +79,4 @@ DEFAULT_ENV_VARS = {
     "config_path": "APP_CONFIG_PATH",
 }
 
-# GitHub API configuration
-GITHUB_API_CONFIG = {
-    "base_url": "https://api.github.com",
-    "per_page": 100,
-    "timeout": 30,
-    "max_retries": 3,
-}
-
-# Optimization settings for 100+ repos
-LARGE_SCALE_CONFIG = {
-    "batch_size": 4000,
-    "chunk_size": 1200,  # Smaller chunks for faster processing
-    "chunk_overlap": 150,
-    "max_context_tokens": 800,  # More aggressive token limit
-    "indexing_parallelism": 4,
-    "embedding_cache_size": 10000,
-    "use_compression": True,
-    "enable_incremental_updates": True,
-}
-
-# Cache configuration
-CACHE_CONFIG = {
-    "embedding_cache_ttl": 3600,  # 1 hour
-    "query_cache_ttl": 300,       # 5 minutes
-    "max_cache_size": 1000,
-    "cleanup_interval": 1800,     # 30 minutes
-}
-
-# Logging configuration
-LOGGING_CONFIG = {
-    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    "date_format": "%Y-%m-%d %H:%M:%S",
-    "max_log_size": "10MB",
-    "backup_count": 5,
-}
+# Dead code removed: DEFAULT_INDEXING_PATTERNS, GITHUB_API_CONFIG, LARGE_SCALE_CONFIG, CACHE_CONFIG, LOGGING_CONFIG were unused

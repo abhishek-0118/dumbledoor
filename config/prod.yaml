@@ -1,12 +1,14 @@
 embedding:
-  model_name: text-embedding-3-large
+  model_name: text-embedding-3-large  
   normalize: true
-  min_dimension: 1024
+  min_dimension: 3072
   api_provider: openai
-  model_dimension: 1024
+  model_dimension: 3072  
   api_key_env: OPENAI_API_KEY
   encode_kwargs:
     normalize_embeddings: true
+    batch_size: 32  
+    dimensions: 3072  
 
 backend:
   chroma_dir: ./.chroma
@@ -15,13 +17,95 @@ backend:
 indexing:
   local_repo_root: ./repos
   repo_urls:
-    - 'https://github.com/Orange-Health/citadel.git'
-    - 'https://github.com/Orange-Health/oms.git'
+  - 'https://github.com/Orange-Health/accounts.git'
+  - 'https://github.com/Orange-Health/health-api.git'
+  - 'https://github.com/Orange-Health/orange-health-app.git'
+  - 'https://github.com/Orange-Health/oms.git'
+  - 'https://github.com/Orange-Health/scheduler-api.git'
+  - 'https://github.com/Orange-Health/doctor-app-automation.git'
+  - 'https://github.com/Orange-Health/patient-app-automation.git'
+  - 'https://github.com/Orange-Health/scheduler.git'
+  - 'https://github.com/Orange-Health/oms_router.git'
+  - 'https://github.com/Orange-Health/mfine-sync.git'
+  - 'https://github.com/Orange-Health/prod-configs.git'
+  - 'https://github.com/Orange-Health/s3wrapper.git'
+  - 'https://github.com/Orange-Health/search.git'
+  - 'https://github.com/Orange-Health/orange-data-warehouse.git'
+  - 'https://github.com/Orange-Health/payment-api.git'
+  - 'https://github.com/Orange-Health/partner-web.git'
+  - 'https://github.com/Orange-Health/partner-api.git'
+  - 'https://github.com/Orange-Health/clr.git'
+  - 'https://github.com/Orange-Health/staging-factory.git'
+  - 'https://github.com/Orange-Health/feedback-api.git'
+  - 'https://github.com/Orange-Health/feedback.git'
+  - 'https://github.com/Orange-Health/doctor-app.git'
+  - 'https://github.com/Orange-Health/dev-env.git'
+  - 'https://github.com/Orange-Health/patients-service.git'
+  - 'https://github.com/Orange-Health/doctor-tab-app.git'
+  - 'https://github.com/Orange-Health/cds.git'
+  - 'https://github.com/Orange-Health/orangehealth.in.git'
+  - 'https://github.com/Orange-Health/cds-web.git'
+  - 'https://github.com/Orange-Health/patient-app.git'
+  - 'https://github.com/Orange-Health/DB-Access-Service.git'
+  - 'https://github.com/Orange-Health/DBAccess-web.git'
+  - 'https://github.com/Orange-Health/Jenkins-image.git'
+  - 'https://github.com/Orange-Health/devops-scripts.git'
+  - 'https://github.com/Orange-Health/report-rebranding.git'
+  - 'https://github.com/Orange-Health/pubsublib.git'
+  - 'https://github.com/Orange-Health/topaz.git'
+  - 'https://github.com/Orange-Health/webhook-service.git'
+  - 'https://github.com/Orange-Health/orange-ui.git'
+  - 'https://github.com/Orange-Health/medhooks-ui.git'
+  - 'https://github.com/Orange-Health/bifrost.git'
+  - 'https://github.com/Orange-Health/oh-design.git'
+  - 'https://github.com/Orange-Health/sapphire-web.git'
+  - 'https://github.com/Orange-Health/sapphire-api.git'
+  - 'https://github.com/Orange-Health/orange-icons.git'
+  - 'https://github.com/Orange-Health/oms-web.git'
+  - 'https://github.com/Orange-Health/asbru.git'
+  - 'https://github.com/Orange-Health/ets-lab.git'
+  - 'https://github.com/Orange-Health/amethyst.git'
+  - 'https://github.com/Orange-Health/impress.git'
+  - 'https://github.com/Orange-Health/cerebro.git'
+  - 'https://github.com/Orange-Health/compass-clinics.git'
+  - 'https://github.com/Orange-Health/compass-partners.git' 
+  - 'https://github.com/Orange-Health/odin-api.git'
+  - 'https://github.com/Orange-Health/compass-d2c.git'
+  - 'https://github.com/Orange-Health/dokumentor.git'
+  - 'https://github.com/Orange-Health/fastapi-boilerplate.git'
+  - 'https://github.com/Orange-Health/geomark.git'
+  - 'https://github.com/Orange-Health/cpms.git'
+  - 'https://github.com/Orange-Health/gin-jwt.git'
+  - 'https://github.com/Orange-Health/pubsublib-python.git'
+  - 'https://github.com/Orange-Health/flash.git'
+  - 'https://github.com/Orange-Health/cdp-api.git'
+  - 'https://github.com/Orange-Health/porte.git'
+  - 'https://github.com/Orange-Health/citadel.git'
+  - 'https://github.com/Orange-Health/odin-python.git'
+  - 'https://github.com/Orange-Health/odin-go.git'
+  - 'https://github.com/Orange-Health/vault.git'
+  - 'https://github.com/Orange-Health/vault-ui.git'
+  - 'https://github.com/Orange-Health/internal-tool-ui-boilerplate.git'
+  - 'https://github.com/Orange-Health/launchpad-api.git'
+  - 'https://github.com/Orange-Health/launchpad-ui.git'
+  - 'https://github.com/Orange-Health/cms-web.git'
+  - 'https://github.com/Orange-Health/cms-api.git'
+  - 'https://github.com/Orange-Health/jarvis-tracer-python.git'
+  - 'https://github.com/Orange-Health/gringotts.git'
+  - 'https://github.com/Orange-Health/auth-web.git'
+  - 'https://github.com/Orange-Health/gringotts-web.git'
+  - 'https://github.com/Orange-Health/gringotts-partner.git'
+  - 'https://github.com/Orange-Health/omsv2-mermaid-diagrams.git'
+  - 'https://github.com/Orange-Health/sanctum.git'
+  - 'https://github.com/Orange-Health/sorting-hat.git'
+  - 'https://github.com/Orange-Health/orange-fusion.git'
+
+
   include_globs: ["**/*"]
   exclude_globs: ["**/.git/**","**/.github/**","**/node_modules/**","**/dist/**","**/build/**","**/*.min.js","**/*.png","**/*.jpg","**/*.jpeg","**/*.pdf","**/__pycache__/**","**/venv/**","**/.venv/**","**/target/**","**/bin/**","**/.DS_Store","**/Thumbs.db"]
   max_file_mb: 1.5
-  chunk_size: 1000  # Smaller chunks for large scale
-  chunk_overlap: 100
+  chunk_size: 1500  
+  chunk_overlap: 200  
   batch_size: 5000  # Safe batch size under Chroma's 5461 limit
   github_token_env: GITHUB_TOKEN
   github_auth_required: true
@@ -31,28 +115,52 @@ indexing:
   compression_enabled: true
 
 retrieval:
-  top_k: 8  # Optimized for production
+  top_k: 25  
   alpha_hybrid: 0.3
-  use_reranker: true  # Enable for better results
+  similarity_threshold: 0.15  
+  
+  # Reranking 
+  use_reranker: true
+  rerank_strategy: embedding_similarity  
   cross_encoder_model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  similarity_threshold: 0.3
-  max_context_docs: 10
-  max_context_tokens: 600  # Very aggressive for cost control
+  
+  # Context management 
+  max_context_docs: 25  
+  max_context_tokens: 4000  # Much higher context limit
   include_file_context: true
   boost_same_language: true
+  
+  # Production optimizations
   enable_caching: true
-  cache_ttl: 600  # Longer cache for production
+  cache_ttl: 1200  # 20 minutes cache for production
+  
+  # Advanced features
+  adaptive_search: true
+  diversity_penalty: 0.15  # Higher penalty to reduce duplication
+  temporal_boost: false  # Disabled for production stability
 
 server:
   host: 0.0.0.0
   port: 8001
 
+# Production Chat Configuration - Quality Optimized
 chat:
   provider: openai
-  model: gpt-3.5-turbo  # Use cheaper model for production
+  model: gpt-4o  
   temperature: 0.1
   api_key_env: OPENAI_API_KEY
-  max_tokens: 600  # Aggressive cost optimization
+  max_tokens: 1500  
+  
+  # Production settings
+  additional_kwargs:
+    presence_penalty: 0.0
+    frequency_penalty: 0.0
+    top_p: 0.9
+    
+  # Rate limiting and optimization
+  enable_streaming: true
+  adaptive_tokens: true
+  timeout: 30  # Request timeout in seconds
 
 current_method: openai
 app_env: prod
@@ -66,11 +174,30 @@ app_env: prod
 #   max_tokens: 4096
 # current_method: gemini
 
+# Production Logging Configuration - Performance Monitoring
 logging:
-  level: INFO
+  level: WARNING  # Reduced logging for production performance
   file: ./logs/app.log
+  
+  # Cost tracking - essential for production
   enable_cost_tracking: true
   cost_log_file: ./logs/cost_history.log
   log_token_usage: true
-  max_log_size: "10MB"
-  backup_count: 5
+  
+  # Performance monitoring
+  log_query_performance: true
+  log_retrieval_metrics: true
+  log_response_quality: false  # Disabled to reduce noise
+  
+  # Production log management
+  max_log_size: 100MB  # Larger logs for production
+  backup_count: 20     # Keep more history
+  
+  # Security and monitoring
+  log_security_events: true
+  log_rate_limiting: true
+  
+  # Format optimized for log aggregation
+  format: json
+  include_context: false  # Reduce log size
+  include_user_data: false  # Privacy compliance
