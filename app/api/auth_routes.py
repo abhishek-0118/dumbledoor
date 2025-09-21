@@ -49,7 +49,7 @@ async def google_callback(
         jwt_token = await user_service.generate_user_token(user)
         
         # Redirect to frontend main screen with token
-        frontend_url = "http://localhost:3000"
+        frontend_url = "https://jarvis.orangehealth.dev"
         redirect_url = f"{frontend_url}/?token={jwt_token}"
         
         return RedirectResponse(url=redirect_url)

@@ -121,3 +121,4 @@ logging:
   format: json
   include_context: false  # Reduce log size
   include_user_data: false  # Privacy compliance
+
