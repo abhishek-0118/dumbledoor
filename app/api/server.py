@@ -171,6 +171,41 @@ async def get_cost_summary():
         }
     }
 
+@app.get("/repositories")
+async def get_repositories():
+    """Get list of indexed repositories."""
+    if not _cfg or not _cfg.indexing:
+        return {"repositories": []}
+    
+    repos = []
+    
+    # Get repositories from repo_urls if available
+    if _cfg.indexing.repo_urls:
+        for repo_url in _cfg.indexing.repo_urls:
+            # Extract repo name from URL
+            repo_name = repo_url.split('/')[-1].replace('.git', '')
+            repos.append({
+                "name": repo_name,
+                "url": repo_url,
+                "type": "github"
+            })
+    
+    # Get repositories from local_paths if available
+    if _cfg.indexing.local_paths:
+        for local_path in _cfg.indexing.local_paths:
+            path_obj = Path(local_path)
+            repos.append({
+                "name": path_obj.name,
+                "url": None,
+                "type": "local",
+                "path": local_path
+            })
+    
+    return {
+        "repositories": repos,
+        "total_count": len(repos)
+    }
+
 @app.get("/ask/stream")
 async def ask_stream(
     q: str = Query(..., description="The question to ask"),
